@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分类页数据指标看板 - LinkDolls</title>
+<style>
+:root {
+  --primary: #2563eb;
+  --primary-light: #dbeafe;
+  --success: #16a34a;
+  --success-light: #dcfce7;
+  --warning: #d97706;
+  --warning-light: #fef3c7;
+  --danger: #dc2626;
+  --danger-light: #fee2e2;
+  --info: #7c3aed;
+  --info-light: #ede9fe;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--gray-100);
+  color: var(--gray-800);
+  line-height: 1.5;
+}
+
+/* 容器 */
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* 头部 */
+.header {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.header-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.header-meta {
+  font-size: 13px;
+  color: var(--gray-500);
+}
+.selector-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.selector-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.selector-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-600);
+}
+.selector {
+  padding: 8px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--gray-700);
+  min-width: 200px;
+  cursor: pointer;
+}
+.selector:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-success { background: var(--success-light); color: var(--success); }
+.status-empty { background: var(--gray-100); color: var(--gray-500); }
+
+/* 信息图标和提示框 */
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--gray-300);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+  cursor: help;
+  position: relative;
+}
+.info-icon::before {
+  content: '?';
+}
+.info-icon:hover .info-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+.info-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--gray-800);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  min-width: 180px;
+  max-width: 280px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: all 0.2s;
+  text-align: left;
+}
+.info-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--gray-800);
+}
+.info-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--primary-light);
+}
+.info-tooltip-source {
+  color: var(--gray-400);
+  font-size: 10px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--gray-600);
+}
+
+/* 维度切换 */
+.dim-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--gray-100);
+  padding: 4px;
+  border-radius: 8px;
+}
+.dim-tab {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dim-tab:hover { color: var(--gray-700); }
+.dim-tab.active {
+  background: #fff;
+  color: var(--gray-800);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* 卡片 */
+.card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin-bottom: 24px;
+}
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--gray-800);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-title::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+}
+.card-title.gsc::before { background: var(--primary); }
+.card-title.seo::before { background: var(--success); }
+.card-title.click::before { background: var(--warning); }
+.card-title.funnel::before { background: var(--danger); }
+.card-title.revenue::before { background: var(--info); }
+.card-badge {
+  font-size: 12px;
+  color: var(--gray-400);
+  background: var(--gray-50);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.card-body { padding: 20px; }
+
+/* KPI卡片 */
+.kpi-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.kpi-grid { grid-template-columns: repeat(2, 1fr); }
+.kpi-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.kpi-card {
+  background: var(--gray-50);
+  border-radius: 10px;
+  padding: 16px;
+}
+.kpi-label {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+.kpi-sub {
+  font-size: 12px;
+  color: var(--gray-400);
+}
+.kpi-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.trend-up { color: var(--success); }
+.trend-down { color: var(--danger); }
+
+/* 进度条 */
+.progress-bar {
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+/* 图表容器 */
+.chart-container {
+  height: 120px;
+  margin-top: 16px;
+}
+
+/* 筛选标签 */
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #fff;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.filter-tab:hover { border-color: var(--gray-300); }
+.filter-tab.active {
+  background: var(--gray-800);
+  color: #fff;
+  border-color: var(--gray-800);
+}
+
+/* 表格 */
+.table-container {
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  background: var(--gray-50);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--gray-200);
+}
+.data-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--gray-50); }
+.text-muted { color: var(--gray-400); }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.ellipsis {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 徽章 */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-top { background: var(--success-light); color: var(--success); }
+.badge-opp { background: var(--warning-light); color: var(--warning); }
+.badge-ctr { background: var(--info-light); color: var(--info); }
+.badge-zero { background: var(--gray-100); color: var(--gray-500); }
+.badge-nav { background: var(--success-light); color: var(--success); }
+.badge-prod { background: var(--primary-light); color: var(--primary); }
+.badge-filter { background: var(--info-light); color: var(--info); }
+
+/* 漏斗 */
+.funnel-container { margin: 16px 0; }
+.funnel-step {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.funnel-label {
+  width: 90px;
+  font-size: 13px;
+  color: var(--gray-600);
+}
+.funnel-bar-wrap { flex: 1; }
+.funnel-bar {
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  min-width: 50px;
+}
+.funnel-bar span {
+  font-size: 13px;
+  font-weight: 600;
+}
+.funnel-drop {
+  width: 60px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+/* 警告框 */
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 16px;
+}
+.alert-warning {
+  background: var(--warning-light);
+  color: #92400e;
+}
+.alert-info {
+  background: var(--info-light);
+  color: #5b21b6;
+}
+.alert b { font-weight: 600; }
+
+/* 图例 */
+.legend {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--gray-600);
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 48px;
+  color: var(--gray-400);
+}
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.empty-state-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--gray-600);
+  margin-bottom: 4px;
+}
+
+/* 内联条形图 */
+.inline-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inline-bar-track {
+  width: 60px;
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.inline-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.inline-bar-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+.inline-bar-pct {
+  font-size: 11px;
+  color: var(--gray-400);
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- 头部 -->
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-title" id="pageTitle">分类页数据指标看板</div>
+      <div class="header-meta">数据来源：GSC · GA4 · Shopify</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="toolbar-btn" id="refreshBtn" onclick="refreshData()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--gray-200);background:#fff;cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px">
+        <span id="refreshIcon">🔄</span>
+        <span id="refreshText">刷新数据</span>
+      </button>
+      <span class="status-badge status-success" id="statusBadge">✓ 有数据</span>
+    </div>
+  </div>
+  <div class="selector-row">
+    <div class="selector-group">
+      <span class="selector-label">分类页</span>
+      <select class="selector" id="catSelect" onchange="onCatChange()"></select>
+    </div>
+    <div class="selector-group">
+      <span class="selector-label">周期</span>
+      <select class="selector" id="periodSelect" onchange="setPeriod(this.value)" style="min-width:140px"></select>
+    </div>
+  </div>
+</div>
+
+<!-- 内容区 -->
+<div id="mainContent">
+  <div class="empty-state">
+    <div class="empty-state-icon">⏳</div>
+    <div class="empty-state-title">加载中...</div>
+  </div>
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+/* 全局状态 */
+let RAW = null;
+let currentCat = '';
+let period = '';
+let charts = {};
+let kwFilter = 'all';
+let clickView = 'top20';
+
+/* KPI卡片辅助函数 - 带信息提示 */
+function kpi(label, value, sub, info) {
+  // info = { formula: '计算公式', source: '数据来源' }
+  const tooltip = info ? `
+    <span class="info-icon">
+      <span class="info-tooltip">
+        <div class="info-tooltip-title">📊 ${info.formula || ''}</div>
+        <div class="info-tooltip-source">📁 ${info.source || ''}</div>
+      </span>
+    </span>` : '';
+  return `<div class="kpi-card">
+    <div class="kpi-label">${label}${tooltip}</div>
+    <div class="kpi-value">${value}</div>
+    <div class="kpi-sub">${sub}</div>
+  </div>`;
+}
+
+/* 刷新数据 */
+async function refreshData() {
+  const btn = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  const text = document.getElementById('refreshText');
+  
+  // 显示加载状态
+  btn.disabled = true;
+  icon.textContent = '⏳';
+  text.textContent = '刷新中...';
+  
+  try {
+    // 调用刷新API
+    const response = await fetch('/api/refresh');
+    const result = await response.json();
+    
+    if (result.success) {
+      icon.textContent = '✅';
+      text.textContent = '刷新成功';
+      
+      // 延迟后重新加载数据
+      setTimeout(() => {
+        location.reload();
+      }, 500);
+    } else {
+      throw new Error(result.error || '刷新失败');
+    }
+  } catch (e) {
+    icon.textContent = '❌';
+    text.textContent = '刷新失败';
+    console.error('刷新失败:', e);
+    alert('刷新失败: ' + e.message);
+    
+    // 恢复按钮状态
+    setTimeout(() => {
+      icon.textContent = '🔄';
+      text.textContent = '刷新数据';
+      btn.disabled = false;
+    }, 2000);
+  }
+}
+
+/* 加载数据 */
+async function loadData() {
+  try {
+    const r = await fetch('dashboard_detail.json');
+    RAW = await r.json();
+    initSelectors();
+    onCatChange();
+  } catch(e) {
+    document.getElementById('mainContent').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">❌</div>
+        <div class="empty-state-title">加载失败</div>
+        <div>${e.message}</div>
+      </div>`;
+  }
+}
+
+/* 初始化选择器 - 从config动态加载 */
+function initSelectors() {
+  const sel = document.getElementById('catSelect');
+  const config = RAW.config || {};
+  
+  // 按负责人分组
+  const byOwner = {};
+  for (const [cat, cfg] of Object.entries(config)) {
+    const owner = cfg.owner || 'Other';
+    if (!byOwner[owner]) byOwner[owner] = [];
+    byOwner[owner].push(cat);
+  }
+  
+  let html = '';
+  // 按负责人排序
+  const owners = Object.keys(byOwner).sort();
+  for (const owner of owners) {
+    // 每个负责人下的页面也排序
+    const cats = byOwner[owner].sort();
+    html += `<optgroup label="${owner}">`;
+    for (const c of cats) {
+      const hasData = Object.values(RAW.data[c] || {}).some(w => w && w.hasData);
+      const label = c.length > 35 ? c.substring(0, 35) + '...' : c;
+      html += `<option value="${c}" ${hasData ? 'selected' : ''}>${label}${hasData ? ' ✓' : ''}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  sel.innerHTML = html;
+}
+
+/* 分类切换 */
+function onCatChange() {
+  currentCat = document.getElementById('catSelect').value;
+  
+  // 找最近有数据的周
+  const catData = RAW.data[currentCat] || {};
+  const weeks = Object.keys(catData).sort();
+  
+  // 默认选中最近有数据的周
+  let lastWithData = '';
+  for (const w of weeks) {
+    if (catData[w] && catData[w].hasData) {
+      lastWithData = w;  // 继续找，取最后一个有数据的
+    }
+  }
+  period = lastWithData || weeks[weeks.length - 1] || '';
+  
+  // 渲染周期标签
+  renderPeriodTabs();
+  renderAll();
+}
+
+/* 周期下拉列表 */
+function renderPeriodTabs() {
+  const catData = RAW.data[currentCat] || {};
+  const weeks = Object.keys(catData).sort();
+  
+  // 当前时间：2026年4月初 ≈ W14
+  // 只显示当前周及之前的周
+  const currentWeek = 14;  // 4月初对应W14
+  const validWeeks = weeks.filter(w => {
+    const weekNum = parseInt(w.replace('w', '').split('_')[0]) || 0;
+    return weekNum <= currentWeek;
+  });
+  
+  // 分组：有数据 / 无数据
+  const weeksWithData = validWeeks.filter(w => catData[w] && catData[w].hasData);
+  const weeksNoData = validWeeks.filter(w => !catData[w] || !catData[w].hasData);
+  
+  const sel = document.getElementById('periodSelect');
+  sel.innerHTML = 
+    (weeksWithData.length > 0 
+      ? `<optgroup label="有数据">${weeksWithData.reverse().map(w => {
+          const d = catData[w];
+          return `<option value="${w}" ${w === period ? 'selected' : ''}>${d.week} ✓</option>`;
+        }).join('')}</optgroup>` 
+      : '') +
+    `<optgroup label="无数据">${weeksNoData.reverse().slice(0, 10).map(w => {
+      const d = catData[w];
+      return `<option value="${w}" ${w === period ? 'selected' : ''}>${d ? d.week : 'W' + w.split('_')[0].replace('w','')}</option>`;
+    }).join('')}</optgroup>`;
+}
+
+function setPeriod(p) {
+  period = p;
+  renderAll();
+}
+
+/* 主渲染 */
+function renderAll() {
+  Object.values(charts).forEach(c => c?.destroy?.());
+  charts = {};
+  
+  const d = RAW.data[currentCat]?.[period];
+  const badge = document.getElementById('statusBadge');
+  
+  if (d?.hasData) {
+    badge.textContent = '✓ 有数据';
+    badge.className = 'status-badge status-success';
+    renderDashboard(d);
+  } else {
+    badge.textContent = '待导入';
+    badge.className = 'status-badge status-empty';
+    document.getElementById('mainContent').innerHTML = `
+      <div class="card">
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <div class="empty-state-title">暂无数据</div>
+          <div>请将CSV文件放入对应目录后刷新</div>
+        </div>
+      </div>`;
+  }
+}
+
+/* 完整看板 */
+function renderDashboard(d) {
+  document.getElementById('mainContent').innerHTML = `
+    ${renderGSCCard(d)}
+    ${renderSEOCard(d)}
+    ${renderClickCard(d)}
+    ${renderFunnelCard(d)}
+    ${renderRevenueCard(d)}
+  `;
+  
+  renderCharts(d);
+  renderTables(d);
+}
+
+/* GSC卡片 */
+function renderGSCCard(d) {
+  const gsc = d.gsc || {};
+  const queries = d.queries || [];
+  const devices = d.devices || [];
+  
+  const mobile = devices.find(x => x.device === 'mobile') || {};
+  const desktop = devices.find(x => x.device === 'desktop') || {};
+  
+  const top3 = queries.filter(q => q.tag === 'top3').length;
+  const top10 = queries.filter(q => ['top3','top10'].includes(q.tag)).length;
+  const opp = queries.filter(q => q.tag === 'opp').length;
+  const zero = queries.filter(q => q.tag === 'zero').length;
+  
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title gsc">关键词排名 & GSC</div>
+      <span class="card-badge">${d.week} · ${d.date}</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-grid kpi-grid-4">
+        ${kpi('总点击', gsc.clicks.toLocaleString(), '自然搜索', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
+        ${kpi('总曝光', gsc.impressions.toLocaleString(), `覆盖 ${queries.length} 个关键词`, {formula: '展示次数求和', source: 'GSC → 网页.csv → 展示'})}
+        ${kpi('平均CTR', gsc.ctr.toFixed(2) + '%', `移动${mobile.ctr || '-'} / 桌面${desktop.ctr || '-'}`, {formula: '点击数 ÷ 展示数 × 100%', source: 'GSC → 网页.csv → 点击率'})}
+        ${kpi('平均排名', gsc.rank.toFixed(1), `移动${mobile.rank?.toFixed(1) || '-'} / 桌面${desktop.rank?.toFixed(1) || '-'}`, {formula: '排名靠前的网页平均排名', source: 'GSC → 网页.csv → 排名'})}
+      </div>
+      <div class="kpi-grid kpi-grid-4">
+        ${kpi('Top3词数', top3, queries.find(q => q.tag === 'top3')?.kw?.substring(0,18) || '-', {formula: '排名 ≤ 3 的关键词数量', source: 'GSC → 查询数.csv → 排名筛选'})}
+        ${kpi('Top10词数', top10, '含Top3', {formula: '排名 ≤ 10 的关键词数量', source: 'GSC → 查询数.csv → 排名筛选'})}
+        ${kpi('机会词(11-20)', opp, '待优化', {formula: '排名 11-20 的关键词数量', source: 'GSC → 查询数.csv → 排名筛选'})}
+        ${kpi('零点击词', zero, '有排名无点击', {formula: '有点击=0 的关键词数量', source: 'GSC → 查询数.csv → 点击筛选'})}
+      </div>
+      <div class="chart-container"><canvas id="gscChart"></canvas></div>
+      <div class="filter-tabs" id="kwFilters">
+        <button class="filter-tab active" onclick="setKwFilter('all',this)">全部</button>
+        <button class="filter-tab" onclick="setKwFilter('top3',this)">Top3</button>
+        <button class="filter-tab" onclick="setKwFilter('top10',this)">Top10</button>
+        <button class="filter-tab" onclick="setKwFilter('opp',this)">机会词</button>
+        <button class="filter-tab" onclick="setKwFilter('zero',this)">零点击</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead><tr>
+            <th>关键词</th>
+            <th class="text-right">排名</th>
+            <th class="text-right">点击</th>
+            <th class="text-right">曝光</th>
+            <th class="text-right">CTR</th>
+            <th>标注</th>
+          </tr></thead>
+          <tbody id="kwTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* SEO卡片 */
+function renderSEOCard(d) {
+  const ga4 = d.ga4 || {};
+  const gsc = d.gsc || {};
+  const devices = d.devices || [];
+  
+  const totalClicks = devices.reduce((s, x) => s + x.clicks, 0) || 1;
+  const mobileClicks = devices.find(x => x.device === 'mobile')?.clicks || 0;
+  const mobilePct = Math.round(mobileClicks / totalClicks * 100);
+  
+  const q1Goal = d.config?.q1_traffic_goal || 0;
+  const pct = q1Goal > 0 ? Math.round(ga4.pageviews / q1Goal * 100) : 0;
+  
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title seo">页面流量分析</div>
+      <span class="card-badge">${d.week}</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-grid kpi-grid-4">
+        <div class="kpi-card">
+          <div class="kpi-label">Q1流量目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → q1_traffic_goal</div></span></span></div>
+          <div class="kpi-value">${q1Goal.toLocaleString()}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct,100)}%;background:${pct<60?'var(--danger)':'var(--success)'}"></div></div>
+          <div class="kpi-sub">当前 ${ga4.pageviews.toLocaleString()} · 完成率 ${pct}%</div>
+        </div>
+        ${kpi('页面浏览', ga4.pageviews.toLocaleString(), `${ga4.activeUsers.toLocaleString()} 活跃用户`, {formula: '浏览次数求和', source: 'GA4 → 页面浏览数.csv → 浏览次数'})}
+        ${kpi('访问次数', (d.landingPage?.sessions || 0).toLocaleString(), 'Sessions', {formula: 'Shopify 访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('访问用户', (d.landingPage?.visitors || 0).toLocaleString(), 'Visitors', {formula: '在线商店访客', source: 'Shopify → 按登陆页面'})}
+      </div>
+      <div class="kpi-grid kpi-grid-4">
+        ${kpi('跳出率', ((d.landingPage?.bounceRate || 0)*100).toFixed(1) + '%', 'Bounce Rate', {formula: '跳出访问 ÷ 总访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('每次访问浏览', (d.landingPage?.pageviewsPerSession || 0).toFixed(2), 'PV/Session', {formula: '页面浏览 ÷ 访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('平均时长', formatDuration(d.landingPage?.avgSessionDuration || 0), 'Avg Session', {formula: '总时长 ÷ 访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('GSC点击', gsc.clicks.toLocaleString(), '自然搜索流入', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
+      </div>
+      <div class="chart-container"><canvas id="trafficChart"></canvas></div>
+  </div>`;
+}
+
+/* 点击卡片 */
+function renderClickCard(d) {
+  const clicks = d.clicks || [];
+  const views = d.ga4?.pageviews || 1;
+  
+  if (!clicks.length) return `<div class="card"><div class="card-header"><div class="card-title click">页面元素点击</div></div><div class="card-body"><div class="empty-state" style="padding:32px"><div class="empty-state-title">暂无数据</div></div></div></div>`;
+  
+  const navClicks = clicks.filter(c => c.type === 'n').reduce((s, c) => s + c.clicks, 0);
+  const prodClicks = clicks.filter(c => c.type === 'p').reduce((s, c) => s + c.clicks, 0);
+  const filtClicks = clicks.filter(c => c.type === 'f').reduce((s, c) => s + c.clicks, 0);
+  
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title click">页面元素点击率</div>
+      <span class="card-badge">CTR = 点击 ÷ 浏览(${views.toLocaleString()})</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-grid kpi-grid-3">
+        ${kpi('导航 · 汇总 CTR', `<span style="color:var(--primary)">${(navClicks/views*100).toFixed(1)}%</span>`, `${navClicks} 次点击`, {formula: '导航类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=导航'})}
+        ${kpi('产品卡片 · 汇总CTR', `<span style="color:var(--success)">${(prodClicks/views*100).toFixed(1)}%</span>`, `${prodClicks} 次点击`, {formula: '产品类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=产品'})}
+        ${kpi('筛选器 · 汇总CTR', `<span style="color:var(--info)">${(filtClicks/views*100).toFixed(1)}%</span>`, `${filtClicks} 次点击`, {formula: '筛选器类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=筛选器'})}
+      </div>
+      <div class="filter-tabs">
+        <button class="filter-tab ${clickView==='top20'?'active':''}" onclick="setClickView('top20',this)">前20元素</button>
+        <button class="filter-tab ${clickView==='nav'?'active':''}" onclick="setClickView('nav',this)">仅导航</button>
+        <button class="filter-tab ${clickView==='product'?'active':''}" onclick="setClickView('product',this)">仅产品</button>
+        <button class="filter-tab ${clickView==='filter'?'active':''}" onclick="setClickView('filter',this)">仅筛选器</button>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--primary)"></div>导航</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>产品卡片</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--info)"></div>筛选器</div>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead><tr><th class="text-center">#</th><th>类型</th><th>元素名称</th><th class="text-right">点击</th><th>CTR</th></tr></thead>
+          <tbody id="clickTable"></tbody>
+        </table>
+      </div>
+  </div>`;
+}
+
+/* 格式化时长（秒→分秒） */
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/* 漏斗卡片 */
+function renderFunnelCard(d) {
+  const conv = d.conversion || {};
+  const devices = Object.keys(conv);
+  
+  if (!devices.length) return `<div class="card"><div class="card-header"><div class="card-title funnel">转化漏斗</div></div><div class="card-body"><div class="empty-state" style="padding:32px"><div class="empty-state-title">暂无数据</div></div></div></div>`;
+  
+  const total = {sessions:0,viewProduct:0,addToCart:0,checkout:0,purchase:0};
+  for (const dev of devices) for (const k in total) total[k] += conv[dev][k] || 0;
+  
+  const viewRate = total.sessions ? (total.viewProduct/total.sessions*100).toFixed(1) : 0;
+  const atcRate = total.viewProduct ? (total.addToCart/total.viewProduct*100).toFixed(1) : 0;
+  const checkRate = total.addToCart ? (total.checkout/total.addToCart*100).toFixed(1) : 0;
+  
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title funnel">转化漏斗</div>
+      <span class="card-badge">${d.week} · GA4</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-grid kpi-grid-4">
+        ${kpi('产品浏览率', viewRate + '%', `${total.viewProduct} / ${total.sessions}`, {formula: '查看产品数 ÷ 会话数 × 100%', source: 'GA4 → 购买历程_设备类别.csv'})}
+        ${kpi('加购率', atcRate + '%', `${total.addToCart} / ${total.viewProduct}`, {formula: '加购数 ÷ 查看产品数 × 100%', source: 'GA4 → 购买历程_设备类别.csv'})}
+        ${kpi('结账率', checkRate + '%', `${total.checkout} / ${total.addToCart}`, {formula: '结账数 ÷ 加购数 × 100%', source: 'GA4 → 购买历程_设备类别.csv'})}
+        ${kpi('成交', `<span style="color:${total.purchase?'var(--success)':'var(--danger)'}">${total.purchase}单</span>`, `${total.checkout}人结账`, {formula: '购买数', source: 'GA4 → 购买历程_设备类别.csv → 购买'})}
+      </div>
+      <div class="funnel-container" id="funnelViz"></div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead><tr><th>设备</th><th class="text-right">会话</th><th class="text-right">浏览产品</th><th class="text-right">加购</th><th class="text-right">结账</th><th class="text-right">购买</th></tr></thead>
+          <tbody>
+            ${devices.map(dev=>`<tr><td>${dev}</td><td class="text-right">${conv[dev].sessions}</td><td class="text-right">${conv[dev].viewProduct}</td><td class="text-right">${conv[dev].addToCart}</td><td class="text-right">${conv[dev].checkout}</td><td class="text-right">${conv[dev].purchase}</td></tr>`).join('')}
+            <tr style="font-weight:600;background:var(--gray-50)"><td>合计</td><td class="text-right">${total.sessions}</td><td class="text-right">${total.viewProduct}</td><td class="text-right">${total.addToCart}</td><td class="text-right">${total.checkout}</td><td class="text-right">${total.purchase}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- 加购商品列表 -->
+      <div class="table-container" style="margin-top:16px">
+        <div class="card-title" style="font-size:14px;margin-bottom:8px">🛒 加购商品列表</div>
+        <table class="data-table">
+          <thead><tr><th class="text-center">#</th><th>产品名称</th><th class="text-right">加购次数</th></tr></thead>
+          <tbody id="cartTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* 收入卡片 */
+function renderRevenueCard(d) {
+  // 从配置和数据读取
+  const config = d.config || {};
+  const revenue = d.revenue || {};
+  
+  const q1Goal = config.q1_revenue_goal || 0;
+  const trafficGoal = config.q1_traffic_goal || 0;
+  const totalSales = revenue.totalSales || 0;
+  const orderCount = revenue.orders || 0;
+  const products = revenue.products || [];
+  
+  const pct = q1Goal > 0 ? Math.round(totalSales / q1Goal * 100) : 0;
+  const avgPrice = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
+  
+  // 计算转化率（需要Q1累计浏览数，暂用当前周数据）
+  const q1Views = d.ga4?.pageviews || 0; // 理想情况应累加Q1所有周
+  const convRate = q1Views > 0 ? (orderCount / q1Views * 100).toFixed(3) : '-';
+  
+  // 如果没有数据，显示空状态
+  if (!products.length) {
+    return `<div class="card">
+      <div class="card-header">
+        <div class="card-title revenue">收入</div>
+        <span class="card-badge">Q1 2026 · Shopify</span>
+      </div>
+      <div class="card-body">
+        <div class="kpi-grid kpi-grid-4">
+        </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">Q1目标</div>
+            <div class="kpi-value">$${q1Goal.toLocaleString()}</div>
+            <div class="kpi-sub">流量目标 ${trafficGoal.toLocaleString()} UV</div>
+        </div>
+        </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">Q1累计销售额</div>
+            <div class="kpi-value" style="color:var(--gray-400)">$0</div>
+            <div class="kpi-sub">暂无订单数据</div>
+        </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">订单数</div>
+            <div class="kpi-value">0</div>
+            <div class="kpi-sub">-</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-label">转化率</div>
+            <div class="kpi-value">-</div>
+            <div class="kpi-sub">-</div>
+        </div>
+        </div>
+        <div class="empty-state" style="padding:32px;margin-top:16px">
+          <div class="empty-state-title">暂无订单数据</div>
+          <div>请在 orders/ 目录下添加订单CSV文件</div>
+    </div>`;
+  }
+  
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title revenue">收入</div>
+      <span class="card-badge">Q1 2026 · Shopify</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-grid kpi-grid-4">
+        <div class="kpi-card">
+          <div class="kpi-label">Q1目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → q1销售金额</div></span></span></div>
+          <div class="kpi-value">$${q1Goal.toLocaleString()}</div>
+          <div class="kpi-sub">流量目标 ${trafficGoal.toLocaleString()} UV</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Q1累计销售额<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 Net sales求和</div><div class="info-tooltip-source">📁 orders.csv → 筛选Order tag → Net sales汇总</div></span></span></div>
+          <div class="kpi-value" style="color:var(--success)">$${totalSales.toLocaleString()}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct,100)}%;background:${pct<60?'var(--danger)':'var(--success)'}"></div></div>
+          <div class="kpi-sub">完成率 ${pct}%</div>
+        </div>
+        ${kpi('订单数', orderCount, `均单价 $${avgPrice}`, {formula: 'Order name去重计数', source: 'orders.csv → 筛选Order tag → Order name去重'})}
+        ${kpi('转化率', convRate + '%', `${orderCount}单 ÷ ${q1Views.toLocaleString()}浏览`, {formula: '订单数 ÷ Q1浏览量 × 100%', source: '订单数/页面浏览数'})}
+      </div>
+      <div class="chart-container"><canvas id="revChart"></canvas></div>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead><tr><th class="text-center">#</th><th>产品名称</th><th class="text-center">数量</th><th>销售金额</th></tr></thead>
+          <tbody id="prodTable"></tbody>
+        </table>
+      </div>
+      </div>
+      <div class="alert alert-info"><b>归因说明：</b>仅统计Shopify tag含/collections/${currentCat}的订单（首访归因）</div>
+    </div>
+  </div>`;
+}
+
+/* 渲染图表 */
+function renderCharts(d) {
+  const catData = RAW.data[currentCat] || {};
+  // 按日期排序而不是字符串排序（避免 w10 < w9 的问题）
+  const allWeeks = Object.keys(catData).sort((a, b) => {
+    const dateA = a.split('_')[1];
+    const dateB = b.split('_')[1];
+    return dateA.localeCompare(dateB);
+  });
+  
+  // SEO图表：取有pageviews或clicks的最近8周
+  const weeksWithTraffic = allWeeks.filter(w => {
+    const wd = catData[w];
+    return wd && (wd.ga4?.pageviews > 0 || wd.gsc?.clicks > 0);
+  });
+  const trafficWeeks = weeksWithTraffic.length > 0 ? weeksWithTraffic.slice(-8) : allWeeks.slice(-8);
+  
+  // 收入图表：取有revenue的最近8周
+  const weeksWithRevenue = allWeeks.filter(w => {
+    const wd = catData[w];
+    return wd && wd.revenue?.totalSales > 0;
+  });
+  const revenueWeeks = weeksWithRevenue.length > 0 ? weeksWithRevenue.slice(-8) : allWeeks.slice(-8);
+  
+  // 构建SEO图表数据
+  const seoLabels = [];
+  const pageviewsData = [];
+  const clicksData = [];
+  
+  for (const w of trafficWeeks) {
+    const wd = catData[w];
+    if (wd) {
+      seoLabels.push(wd.week || w.replace('w', 'W').split('_')[0]);
+      pageviewsData.push(wd.ga4?.pageviews || 0);
+      clicksData.push(wd.gsc?.clicks || 0);
+    }
+  }
+  
+  // 构建收入图表数据
+  const revLabels = [];
+  const revenueData = [];
+  
+  for (const w of revenueWeeks) {
+    const wd = catData[w];
+    if (wd) {
+      revLabels.push(wd.week || w.replace('w', 'W').split('_')[0]);
+      revenueData.push(wd.revenue?.totalSales || 0);
+    }
+  }
+  
+  console.log('SEO图表数据:', { 
+    labels: seoLabels,
+    pageviews: pageviewsData,
+    clicks: clicksData,
+    hasData: pageviewsData.some(v => v > 0) || clicksData.some(v => v > 0)
+  });
+  console.log('收入图表数据:', {
+    labels: revLabels,
+    sales: revenueData,
+    hasData: revenueData.some(v => v > 0)
+  });
+  
+  // GSC点击图表
+  const gscEl = document.getElementById('gscChart');
+  if (gscEl) {
+    const hasData = clicksData.some(v => v > 0);
+    if (hasData) {
+      if (charts.gsc) charts.gsc.destroy();
+      charts.gsc = new Chart(gscEl, {
+        type: 'line',
+        data: {
+          labels: seoLabels,
+          datasets: [{ 
+            label: 'GSC点击', 
+            data: clicksData, 
+            borderColor: '#3b82f6', 
+            backgroundColor: 'rgba(59,130,246,0.1)', 
+            fill: true, 
+            tension: 0.3 
+          }]
+        },
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { legend: { display: false } },
+          scales: { 
+            x: { grid: { display: false }, ticks: { color: '#9ca3af' } }, 
+            y: { grid: { color: '#f3f4f6' }, ticks: { color: '#9ca3af' }, beginAtZero: true } 
+          } 
+        }
+      });
+    } else {
+      gscEl.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">暂无GSC点击数据</div>';
+    }
+  }
+  
+  // SEO图表 - 页面浏览和GSC点击
+  const seoEl = document.getElementById('trafficChart');
+  if (seoEl) {
+    const hasPageviews = pageviewsData.some(v => v > 0);
+    const hasClicks = clicksData.some(v => v > 0);
+    
+    if (hasPageviews || hasClicks) {
+      if (charts.seo) charts.seo.destroy();
+      charts.seo = new Chart(seoEl, {
+        type: 'line',
+        data: {
+          labels: seoLabels,
+          datasets: [
+            { label: '页面浏览', data: pageviewsData, borderColor: '#93c5fd', backgroundColor: 'rgba(147,197,253,0.2)', fill: true, tension: 0.3 },
+            { label: 'GSC点击', data: clicksData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.2)', fill: true, tension: 0.3 }
+          ]
+        },
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, usePointStyle: true } } },
+          scales: { 
+            x: { grid: { display: false }, ticks: { color: '#9ca3af' } }, 
+            y: { grid: { color: '#f3f4f6' }, ticks: { color: '#9ca3af' }, beginAtZero: true } 
+          } 
+        }
+      });
+    } else {
+      seoEl.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">暂无SEO数据</div>';
+    }
+  }
+  
+  // 收入图表
+  const revEl = document.getElementById('revChart');
+  if (revEl) {
+    const hasRevenue = revenueData.some(v => v > 0);
+    
+    if (hasRevenue) {
+      if (charts.rev) charts.rev.destroy();
+      charts.rev = new Chart(revEl, {
+        type: 'line',
+        data: {
+          labels: revLabels,
+          datasets: [{ 
+            label: '销售额', 
+            data: revenueData, 
+            borderColor: '#22c55e', 
+            backgroundColor: 'rgba(34,197,94,0.15)', 
+            fill: true, 
+            tension: 0.3 
+          }]
+        },
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { legend: { display: false } },
+          scales: { 
+            x: { grid: { display: false }, ticks: { color: '#9ca3af' } }, 
+            y: { grid: { color: '#f3f4f6' }, ticks: { color: '#9ca3af', callback: v => '$'+v }, beginAtZero: true } 
+          } 
+        }
+      });
+    } else {
+      revEl.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">暂无收入数据</div>';
+    }
+  }
+}
+
+/* 渲染表格 */
+function renderTables(d) {
+  // 关键词表格
+  const kwBody = document.getElementById('kwTable');
+  if (kwBody) {
+    let data = [...(d.queries || [])];
+    if (kwFilter !== 'all') {
+      const f = kwFilter === 'top10' ? ['top3','top10'] : kwFilter;
+      data = data.filter(q => Array.isArray(f) ? f.includes(q.tag) : q.tag === f);
+    }
+    const tagBadge = t => ({top3:'<span class="badge badge-top">Top3</span>',top10:'<span class="badge badge-top">Top10</span>',opp:'<span class="badge badge-opp">机会词</span>',zero:'<span class="badge badge-zero">零点击</span>'}[t]||'');
+    kwBody.innerHTML = data.slice(0,20).map(q=>`<tr><td class="ellipsis">${q.kw}</td><td class="text-right">${q.rank}</td><td class="text-right">${q.clicks}</td><td class="text-right">${q.imp}</td><td class="text-right">${q.ctr}%</td><td>${tagBadge(q.tag)}</td></tr>`).join('');
+  }
+  
+  // 点击表格
+  const clickBody = document.getElementById('clickTable');
+  if (clickBody) {
+    let data = d.clicks || [];
+    if (clickView === 'nav') data = data.filter(c => c.type === 'n');
+    if (clickView === 'product') data = data.filter(c => c.type === 'p');
+    if (clickView === 'filter') data = data.filter(c => c.type === 'f');
+    const views = d.ga4?.pageviews || 1;
+    const maxC = data.length ? Math.max(...data.map(c=>c.clicks),1) : 1;
+    clickBody.innerHTML = data.slice(0,20).map((c,i)=>`<tr>
+      <td class="text-center text-muted">${i+1}</td>
+      <td>${c.type==='n'?'<span class="badge badge-nav">导航</span>':(c.type==='p'?'<span class="badge badge-prod">产品</span>':'<span class="badge badge-filter">筛选</span>')}</td>
+      <td class="ellipsis">${c.name}</td>
+      <td class="text-right">${c.clicks}</td>
+      <td><div class="inline-bar"><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${c.clicks/maxC*100}%;background:${c.type==='n'?'#3b82f6':(c.type==='p'?'#22c55e':'#7c3aed')}"></div></div><span class="inline-bar-value">${(c.clicks/views*100).toFixed(2)}%</span></div></td>
+    </tr>`).join('');
+  }
+  
+  // 产品表格
+  const prodBody = document.getElementById('prodTable');
+  if (prodBody) {
+    const products = d.revenue?.products || [];
+    
+    if (products.length > 0) {
+      const totalSales = d.revenue?.totalSales || 1;
+      const maxS = Math.max(...products.map(p => p.sales), 1);
+      prodBody.innerHTML = products.map((p,i)=>`<tr>
+        <td class="text-center text-muted">${i+1}</td>
+        <td class="ellipsis">${p.name}</td>
+        <td class="text-center">${p.orders}</td>
+        <td><div class="inline-bar"><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${p.sales/maxS*100}%;background:#22c55e"></div></div><span class="inline-bar-value">$${p.sales.toLocaleString()}</span><span class="inline-bar-pct">${Math.round(p.sales/totalSales*100)}%</span></div></td>
+      </tr>`).join('');
+    } else {
+      prodBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:24px">暂无产品销售数据</td></tr>';
+    }
+  }
+  
+  // 漏斗可视化
+  const funnelViz = document.getElementById('funnelViz');
+  
+  // 加购商品表格
+  const cartBody = document.getElementById('cartTable');
+  if (cartBody) {
+    const cartAdds = d.cartAdds || [];
+    if (cartAdds.length > 0) {
+      cartBody.innerHTML = cartAdds.map((p, i) => '<tr><td class="text-center text-muted">' + (i+1) + '</td><td class="ellipsis">' + p.name + '</td><td class="text-right">' + p.cartAdds + '</td></tr>').join('');
+    } else {
+      cartBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted" style="padding:16px">暂无加购数据</td></tr>';
+    }
+  }
+  if (funnelViz && d.conversion) {
+    const conv = d.conversion;
+    const total = {sessions:0,viewProduct:0,addToCart:0,checkout:0,purchase:0};
+    for (const dev of Object.keys(conv)) for (const k in total) total[k] += conv[dev][k] || 0;
+    const steps = [{l:'会话',n:total.sessions,bg:'#dbeafe',c:'#1e40af'},{l:'浏览产品',n:total.viewProduct,bg:'#dcfce7',c:'#166534'},{l:'加购',n:total.addToCart,bg:'#fef3c7',c:'#92400e'},{l:'结账',n:total.checkout,bg:'#fee2e2',c:'#991b1b'},{l:'购买',n:total.purchase,bg:'#f3e8ff',c:'#6b21a8'}];
+    const maxN = steps[0].n || 1;
+    funnelViz.innerHTML = steps.map((s,i)=>`<div class="funnel-step">
+      <div class="funnel-label">${s.l}</div>
+      <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:${Math.max(s.n/maxN*100,s.n?5:2)}%;background:${s.bg};border:1px solid ${s.c}"><span style="color:${s.c}">${s.n.toLocaleString()}</span></div></div>
+      <div class="funnel-drop">${i>0&&steps[i-1].n?Math.round((1-s.n/steps[i-1].n)*100)+'% 流失':''}</div>
+    </div>`).join('');
+  }
+}
+
+function setKwFilter(f, btn) {
+  kwFilter = f;
+  document.querySelectorAll('#kwFilters .filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTables(RAW.data[currentCat]?.[period]);
+}
+
+function setClickView(v, btn) {
+  clickView = v;
+  btn.parentElement.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTables(RAW.data[currentCat]?.[period]);
+}
+
+/* 启动 */
+loadData();
+</script>
+</body>
+</html>
