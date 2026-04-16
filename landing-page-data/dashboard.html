@@ -328,14 +328,16 @@ body {
   border: 1px solid var(--gray-200);
   border-radius: 10px;
   overflow: hidden;
+  overflow-x: auto;
 }
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 .data-table th {
   text-align: left;
-  padding: 12px 16px;
+  padding: 10px 14px;
   font-size: 11px;
   font-weight: 600;
   color: var(--gray-500);
@@ -343,11 +345,17 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid var(--gray-200);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .data-table td {
-  padding: 12px 16px;
-  font-size: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
   border-bottom: 1px solid var(--gray-100);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: var(--gray-50); }
@@ -360,6 +368,15 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 列宽控制 */
+.col-rank { width: 40px; }
+.col-num { width: 70px; }
+.col-pct { width: 65px; }
+.col-tag { width: 70px; }
+.col-type { width: 55px; }
+.col-bar { width: 160px; }
+.col-sales { width: 180px; }
+.col-qty { width: 55px; }
 
 /* 徽章 */
 .badge {
@@ -467,9 +484,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .inline-bar-track {
-  width: 60px;
+  width: 50px;
+  min-width: 50px;
   height: 6px;
   background: var(--gray-200);
   border-radius: 3px;
@@ -483,10 +502,12 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: var(--gray-700);
+  white-space: nowrap;
 }
 .inline-bar-pct {
   font-size: 11px;
   color: var(--gray-400);
+  white-space: nowrap;
 }
 </style>
 </head>
@@ -531,7 +552,7 @@ body {
 
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" onerror="console.warn('Chart.js CDN加载失败')"></script>
 <script>
 /* 全局状态 */
 let RAW = null;
@@ -540,6 +561,7 @@ let period = '';
 let charts = {};
 let kwFilter = 'all';
 let clickView = 'top20';
+let currentQuarter = 'Q' + Math.ceil((new Date().getMonth() + 1) / 3); // 自动计算当前季度
 
 /* KPI卡片辅助函数 - 带信息提示 */
 function kpi(label, value, sub, info) {
@@ -604,15 +626,29 @@ async function refreshData() {
 async function loadData() {
   try {
     const r = await fetch('dashboard_detail.json');
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': 无法加载 dashboard_detail.json');
     RAW = await r.json();
-    initSelectors();
-    onCatChange();
   } catch(e) {
     document.getElementById('mainContent').innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">❌</div>
-        <div class="empty-state-title">加载失败</div>
+        <div class="empty-state-title">数据加载失败</div>
         <div>${e.message}</div>
+        <div style="margin-top:8px;font-size:12px;color:#9ca3af">请确认 dashboard_detail.json 存在且服务器正常运行</div>
+      </div>`;
+    return;
+  }
+  try {
+    initSelectors();
+    onCatChange();
+  } catch(e) {
+    console.error('渲染失败:', e);
+    document.getElementById('mainContent').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <div class="empty-state-title">渲染失败</div>
+        <div>${e.message}</div>
+        <div style="margin-top:8px;font-size:12px;color:#9ca3af">${e.stack || ''}</div>
       </div>`;
   }
 }
@@ -639,8 +675,9 @@ function initSelectors() {
     html += `<optgroup label="${owner}">`;
     for (const c of cats) {
       const hasData = Object.values(RAW.data[c] || {}).some(w => w && w.hasData);
+      const isDefault = c === 'full-doll';
       const label = c.length > 35 ? c.substring(0, 35) + '...' : c;
-      html += `<option value="${c}" ${hasData ? 'selected' : ''}>${label}${hasData ? ' ✓' : ''}</option>`;
+      html += `<option value="${c}" ${isDefault ? 'selected' : ''}>${label}${hasData ? ' ✓' : ''}</option>`;
     }
     html += '</optgroup>';
   }
@@ -674,9 +711,10 @@ function renderPeriodTabs() {
   const catData = RAW.data[currentCat] || {};
   const weeks = Object.keys(catData).sort();
   
-  // 当前时间：2026年4月初 ≈ W14
-  // 只显示当前周及之前的周
-  const currentWeek = 14;  // 4月初对应W14
+  // 自动计算当前周数
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const currentWeek = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
   const validWeeks = weeks.filter(w => {
     const weekNum = parseInt(w.replace('w', '').split('_')[0]) || 0;
     return weekNum <= currentWeek;
@@ -691,12 +729,15 @@ function renderPeriodTabs() {
     (weeksWithData.length > 0 
       ? `<optgroup label="有数据">${weeksWithData.reverse().map(w => {
           const d = catData[w];
-          return `<option value="${w}" ${w === period ? 'selected' : ''}>${d.week} ✓</option>`;
+          return `<option value="${w}" ${w === period ? 'selected' : ''}>${d.week}-${d.date} ✓</option>`;
         }).join('')}</optgroup>` 
       : '') +
     `<optgroup label="无数据">${weeksNoData.reverse().slice(0, 10).map(w => {
-      const d = catData[w];
-      return `<option value="${w}" ${w === period ? 'selected' : ''}>${d ? d.week : 'W' + w.split('_')[0].replace('w','')}</option>`;
+      const parts = w.split('_');
+      const weekNum = parts[0].replace('w', '');
+      const dateStr = parts[1] || '';
+      const date = dateStr ? `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}` : '';
+      return `<option value="${w}" ${w === period ? 'selected' : ''}>w${weekNum}-${date}</option>`;
     }).join('')}</optgroup>`;
 }
 
@@ -789,11 +830,11 @@ function renderGSCCard(d) {
         <table class="data-table">
           <thead><tr>
             <th>关键词</th>
-            <th class="text-right">排名</th>
-            <th class="text-right">点击</th>
-            <th class="text-right">曝光</th>
-            <th class="text-right">CTR</th>
-            <th>标注</th>
+            <th class="text-right col-num">排名</th>
+            <th class="text-right col-num">点击</th>
+            <th class="text-right col-num">曝光</th>
+            <th class="text-right col-pct">CTR</th>
+            <th class="col-tag">标注</th>
           </tr></thead>
           <tbody id="kwTable"></tbody>
         </table>
@@ -812,9 +853,6 @@ function renderSEOCard(d) {
   const mobileClicks = devices.find(x => x.device === 'mobile')?.clicks || 0;
   const mobilePct = Math.round(mobileClicks / totalClicks * 100);
   
-  const q1Goal = d.config?.q1_traffic_goal || 0;
-  const pct = q1Goal > 0 ? Math.round(ga4.pageviews / q1Goal * 100) : 0;
-  
   return `<div class="card">
     <div class="card-header">
       <div class="card-title seo">页面流量分析</div>
@@ -822,21 +860,16 @@ function renderSEOCard(d) {
     </div>
     <div class="card-body">
       <div class="kpi-grid kpi-grid-4">
-        <div class="kpi-card">
-          <div class="kpi-label">Q1流量目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → q1_traffic_goal</div></span></span></div>
-          <div class="kpi-value">${q1Goal.toLocaleString()}</div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct,100)}%;background:${pct<60?'var(--danger)':'var(--success)'}"></div></div>
-          <div class="kpi-sub">当前 ${ga4.pageviews.toLocaleString()} · 完成率 ${pct}%</div>
-        </div>
         ${kpi('页面浏览', ga4.pageviews.toLocaleString(), `${ga4.activeUsers.toLocaleString()} 活跃用户`, {formula: '浏览次数求和', source: 'GA4 → 页面浏览数.csv → 浏览次数'})}
         ${kpi('访问次数', (d.landingPage?.sessions || 0).toLocaleString(), 'Sessions', {formula: 'Shopify 访问', source: 'Shopify → 按登陆页面'})}
         ${kpi('访问用户', (d.landingPage?.visitors || 0).toLocaleString(), 'Visitors', {formula: '在线商店访客', source: 'Shopify → 按登陆页面'})}
+        ${kpi('GSC点击', gsc.clicks.toLocaleString(), '自然搜索流入', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
       </div>
       <div class="kpi-grid kpi-grid-4">
         ${kpi('跳出率', ((d.landingPage?.bounceRate || 0)*100).toFixed(1) + '%', 'Bounce Rate', {formula: '跳出访问 ÷ 总访问', source: 'Shopify → 按登陆页面'})}
         ${kpi('每次访问浏览', (d.landingPage?.pageviewsPerSession || 0).toFixed(2), 'PV/Session', {formula: '页面浏览 ÷ 访问', source: 'Shopify → 按登陆页面'})}
         ${kpi('平均时长', formatDuration(d.landingPage?.avgSessionDuration || 0), 'Avg Session', {formula: '总时长 ÷ 访问', source: 'Shopify → 按登陆页面'})}
-        ${kpi('GSC点击', gsc.clicks.toLocaleString(), '自然搜索流入', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
+        ${kpi('移动端占比', mobilePct + '%', `${mobileClicks.toLocaleString()} / ${totalClicks.toLocaleString()} 点击`, {formula: '移动端点击 ÷ 总点击', source: 'GSC → 设备.csv'})}
       </div>
       <div class="chart-container"><canvas id="trafficChart"></canvas></div>
   </div>`;
@@ -877,7 +910,7 @@ function renderClickCard(d) {
       </div>
       <div class="table-container">
         <table class="data-table">
-          <thead><tr><th class="text-center">#</th><th>类型</th><th>元素名称</th><th class="text-right">点击</th><th>CTR</th></tr></thead>
+          <thead><tr><th class="text-center col-rank">#</th><th class="col-type">类型</th><th>元素名称</th><th class="text-right col-num">点击</th><th class="col-bar">CTR</th></tr></thead>
           <tbody id="clickTable"></tbody>
         </table>
       </div>
@@ -921,7 +954,7 @@ function renderFunnelCard(d) {
       <div class="funnel-container" id="funnelViz"></div>
       <div class="table-container">
         <table class="data-table">
-          <thead><tr><th>设备</th><th class="text-right">会话</th><th class="text-right">浏览产品</th><th class="text-right">加购</th><th class="text-right">结账</th><th class="text-right">购买</th></tr></thead>
+          <thead><tr><th style="width:80px">设备</th><th class="text-right col-num">会话</th><th class="text-right col-num">浏览产品</th><th class="text-right col-num">加购</th><th class="text-right col-num">结账</th><th class="text-right col-num">购买</th></tr></thead>
           <tbody>
             ${devices.map(dev=>`<tr><td>${dev}</td><td class="text-right">${conv[dev].sessions}</td><td class="text-right">${conv[dev].viewProduct}</td><td class="text-right">${conv[dev].addToCart}</td><td class="text-right">${conv[dev].checkout}</td><td class="text-right">${conv[dev].purchase}</td></tr>`).join('')}
             <tr style="font-weight:600;background:var(--gray-50)"><td>合计</td><td class="text-right">${total.sessions}</td><td class="text-right">${total.viewProduct}</td><td class="text-right">${total.addToCart}</td><td class="text-right">${total.checkout}</td><td class="text-right">${total.purchase}</td></tr>
@@ -933,7 +966,7 @@ function renderFunnelCard(d) {
       <div class="table-container" style="margin-top:16px">
         <div class="card-title" style="font-size:14px;margin-bottom:8px">🛒 加购商品列表</div>
         <table class="data-table">
-          <thead><tr><th class="text-center">#</th><th>产品名称</th><th class="text-right">加购次数</th></tr></thead>
+          <thead><tr><th class="text-center col-rank">#</th><th>产品名称</th><th class="text-right col-num">加购次数</th></tr></thead>
           <tbody id="cartTable"></tbody>
         </table>
       </div>
@@ -945,90 +978,95 @@ function renderFunnelCard(d) {
 function renderRevenueCard(d) {
   // 从配置和数据读取
   const config = d.config || {};
-  const revenue = d.revenue || {};
+  const revenueAll = d.revenue || {};
+  const revenue = revenueAll[currentQuarter] || {};
   
-  const q1Goal = config.q1_revenue_goal || 0;
-  const trafficGoal = config.q1_traffic_goal || 0;
+  const qKey = currentQuarter.toLowerCase(); // q1, q2, q3, q4
+  const qGoal = config[`${qKey}_revenue_goal`] || 0;
+  const trafficGoal = config[`${qKey}_traffic_goal`] || 0;
+  
   const totalSales = revenue.totalSales || 0;
   const orderCount = revenue.orders || 0;
   const products = revenue.products || [];
   
-  const pct = q1Goal > 0 ? Math.round(totalSales / q1Goal * 100) : 0;
+  const pct = qGoal > 0 ? Math.round(totalSales / qGoal * 100) : 0;
   const avgPrice = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
   
-  // 计算转化率（需要Q1累计浏览数，暂用当前周数据）
-  const q1Views = d.ga4?.pageviews || 0; // 理想情况应累加Q1所有周
+  const q1Views = d.ga4?.pageviews || 0;
   const convRate = q1Views > 0 ? (orderCount / q1Views * 100).toFixed(3) : '-';
+  
+  // 季度切换标签
+  const quarterTabs = ['Q1','Q2','Q3','Q4'].map(q => 
+    `<button class="filter-tab ${q === currentQuarter ? 'active' : ''}" onclick="setQuarter('${q}', this)">${q}</button>`
+  ).join('');
   
   // 如果没有数据，显示空状态
   if (!products.length) {
     return `<div class="card">
       <div class="card-header">
         <div class="card-title revenue">收入</div>
-        <span class="card-badge">Q1 2026 · Shopify</span>
+        <div class="filter-tabs" style="margin-bottom:0">${quarterTabs}</div>
+        <span class="card-badge">${currentQuarter} 2026 · Shopify</span>
       </div>
       <div class="card-body">
-        <div class="kpi-grid kpi-grid-4">
-        </div>
-
+        <div class="kpi-grid kpi-grid-3">
           <div class="kpi-card">
-            <div class="kpi-label">Q1目标</div>
-            <div class="kpi-value">$${q1Goal.toLocaleString()}</div>
-            <div class="kpi-sub">流量目标 ${trafficGoal.toLocaleString()} UV</div>
-        </div>
-        </div>
-
+            <div class="kpi-label">${currentQuarter}销售目标</div>
+            <div class="kpi-value">$${qGoal.toLocaleString()}</div>
+          </div>
           <div class="kpi-card">
-            <div class="kpi-label">Q1累计销售额</div>
+            <div class="kpi-label">${currentQuarter}流量目标</div>
+            <div class="kpi-value">${trafficGoal.toLocaleString()}</div>
+            <div class="kpi-sub">UV</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">${currentQuarter}累计销售额</div>
             <div class="kpi-value" style="color:var(--gray-400)">$0</div>
             <div class="kpi-sub">暂无订单数据</div>
-        </div>
-
-          <div class="kpi-card">
-            <div class="kpi-label">订单数</div>
-            <div class="kpi-value">0</div>
-            <div class="kpi-sub">-</div>
           </div>
         </div>
-
-        <div class="kpi-card">
-            <div class="kpi-label">转化率</div>
-            <div class="kpi-value">-</div>
-            <div class="kpi-sub">-</div>
-        </div>
-        </div>
         <div class="empty-state" style="padding:32px;margin-top:16px">
-          <div class="empty-state-title">暂无订单数据</div>
+          <div class="empty-state-title">暂无${currentQuarter}订单数据</div>
           <div>请在 orders/ 目录下添加订单CSV文件</div>
+        </div>
+      </div>
     </div>`;
   }
   
   return `<div class="card">
     <div class="card-header">
       <div class="card-title revenue">收入</div>
-      <span class="card-badge">Q1 2026 · Shopify</span>
+      <div class="filter-tabs" style="margin-bottom:0">${quarterTabs}</div>
+      <span class="card-badge">${currentQuarter} 2026 · Shopify</span>
     </div>
     <div class="card-body">
-      <div class="kpi-grid kpi-grid-4">
+      <div class="kpi-grid kpi-grid-3">
         <div class="kpi-card">
-          <div class="kpi-label">Q1目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → q1销售金额</div></span></span></div>
-          <div class="kpi-value">$${q1Goal.toLocaleString()}</div>
-          <div class="kpi-sub">流量目标 ${trafficGoal.toLocaleString()} UV</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Q1累计销售额<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 Net sales求和</div><div class="info-tooltip-source">📁 orders.csv → 筛选Order tag → Net sales汇总</div></span></span></div>
-          <div class="kpi-value" style="color:var(--success)">$${totalSales.toLocaleString()}</div>
+          <div class="kpi-label">${currentQuarter}销售目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → ${qKey}销售金额</div></span></span></div>
+          <div class="kpi-value">$${qGoal.toLocaleString()}</div>
           <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct,100)}%;background:${pct<60?'var(--danger)':'var(--success)'}"></div></div>
           <div class="kpi-sub">完成率 ${pct}%</div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-label">${currentQuarter}流量目标<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 config配置目标</div><div class="info-tooltip-source">📁 config/target-2026.csv → ${qKey}流量目标</div></span></span></div>
+          <div class="kpi-value">${trafficGoal.toLocaleString()}</div>
+          <div class="kpi-sub">UV</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">${currentQuarter}累计销售额<span class="info-icon"><span class="info-tooltip"><div class="info-tooltip-title">📊 Net sales求和</div><div class="info-tooltip-source">📁 orders.csv → 筛选Order tag → Net sales汇总</div></span></span></div>
+          <div class="kpi-value" style="color:var(--success)">$${totalSales.toLocaleString()}</div>
+        </div>
+      </div>
+      <div class="kpi-grid kpi-grid-3">
         ${kpi('订单数', orderCount, `均单价 $${avgPrice}`, {formula: 'Order name去重计数', source: 'orders.csv → 筛选Order tag → Order name去重'})}
-        ${kpi('转化率', convRate + '%', `${orderCount}单 ÷ ${q1Views.toLocaleString()}浏览`, {formula: '订单数 ÷ Q1浏览量 × 100%', source: '订单数/页面浏览数'})}
+        ${kpi('转化率', convRate + '%', `${orderCount}单 ÷ ${q1Views.toLocaleString()}浏览`, {formula: '订单数 ÷ 浏览量 × 100%', source: '订单数/页面浏览数'})}
+        ${kpi('均单价', '$' + avgPrice.toLocaleString(), `${orderCount} 订单`, {formula: '总销售额 ÷ 订单数', source: 'orders.csv'})}
       </div>
       <div class="chart-container"><canvas id="revChart"></canvas></div>
       </div>
       <div class="table-container">
         <table class="data-table">
-          <thead><tr><th class="text-center">#</th><th>产品名称</th><th class="text-center">数量</th><th>销售金额</th></tr></thead>
+          <thead><tr><th class="text-center col-rank">#</th><th>产品名称</th><th class="text-center col-qty">数量</th><th class="col-sales">销售金额</th></tr></thead>
           <tbody id="prodTable"></tbody>
         </table>
       </div>
@@ -1040,6 +1078,13 @@ function renderRevenueCard(d) {
 
 /* 渲染图表 */
 function renderCharts(d) {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js 未加载，跳过图表渲染');
+    document.querySelectorAll('.chart-container').forEach(el => {
+      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">Chart.js 加载失败，图表不可用（请检查网络）</div>';
+    });
+    return;
+  }
   const catData = RAW.data[currentCat] || {};
   // 按日期排序而不是字符串排序（避免 w10 < w9 的问题）
   const allWeeks = Object.keys(catData).sort((a, b) => {
@@ -1058,7 +1103,8 @@ function renderCharts(d) {
   // 收入图表：取有revenue的最近8周
   const weeksWithRevenue = allWeeks.filter(w => {
     const wd = catData[w];
-    return wd && wd.revenue?.totalSales > 0;
+    const qRev = wd?.revenue?.[currentQuarter];
+    return wd && qRev && qRev.totalSales > 0;
   });
   const revenueWeeks = weeksWithRevenue.length > 0 ? weeksWithRevenue.slice(-8) : allWeeks.slice(-8);
   
@@ -1084,7 +1130,8 @@ function renderCharts(d) {
     const wd = catData[w];
     if (wd) {
       revLabels.push(wd.week || w.replace('w', 'W').split('_')[0]);
-      revenueData.push(wd.revenue?.totalSales || 0);
+      const qRev = wd.revenue?.[currentQuarter];
+      revenueData.push(qRev?.totalSales || 0);
     }
   }
   
@@ -1237,10 +1284,11 @@ function renderTables(d) {
   // 产品表格
   const prodBody = document.getElementById('prodTable');
   if (prodBody) {
-    const products = d.revenue?.products || [];
+    const qRevenue = (d.revenue || {})[currentQuarter] || {};
+    const products = qRevenue.products || [];
     
     if (products.length > 0) {
-      const totalSales = d.revenue?.totalSales || 1;
+      const totalSales = qRevenue.totalSales || 1;
       const maxS = Math.max(...products.map(p => p.sales), 1);
       prodBody.innerHTML = products.map((p,i)=>`<tr>
         <td class="text-center text-muted">${i+1}</td>
@@ -1292,6 +1340,12 @@ function setClickView(v, btn) {
   btn.parentElement.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderTables(RAW.data[currentCat]?.[period]);
+}
+
+function setQuarter(q, btn) {
+  currentQuarter = q;
+  const d = RAW.data[currentCat]?.[period];
+  if (d) renderDashboard(d);
 }
 
 /* 启动 */
