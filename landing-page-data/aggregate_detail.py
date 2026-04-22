@@ -64,7 +64,7 @@ def load_page_config():
             if url.startswith('/collections/'):
                 cat = url.replace('/collections/', '')
             elif url == '/linkdolls.com':
-                cat = 'homepage'
+                cat = 'linkdolls.com'
             elif url.startswith('/pages/'):
                 cat = url.replace('/pages/', '')
             else:
@@ -73,96 +73,175 @@ def load_page_config():
             config[cat] = {
                 'owner': row.get('负责人', '-').strip(),
                 'q1_traffic_goal': int(float(row.get('q1流量目标', 0) or 0)),
-                'q1_revenue_goal': int(float(str(row.get('q1销售金额', 0) or '0').replace('$', '').replace(',', '').replace(' ', '')))
+                'q1_revenue_goal': int(float(str(row.get('q1销售金额', 0) or '0').replace('$', '').replace(',', '').replace(' ', ''))),
+                'q2_traffic_goal': int(float(row.get('q2流量目标', 0) or 0)),
+                'q2_revenue_goal': int(float(str(row.get('q2销售金额', 0) or '0').replace('$', '').replace(',', '').replace(' ', ''))),
+                'q3_traffic_goal': int(float(row.get('q3流量目标', 0) or 0)),
+                'q3_revenue_goal': int(float(str(row.get('q3销售金额', 0) or '0').replace('$', '').replace(',', '').replace(' ', ''))),
+                'q4_traffic_goal': int(float(row.get('q4流量目标', 0) or 0)),
+                'q4_revenue_goal': int(float(str(row.get('q4销售金额', 0) or '0').replace('$', '').replace(',', '').replace(' ', '')))
             }
     
     print(f"📋 加载配置: {len(config)} 个页面")
     return config
 
 def load_orders_all():
-    """读取全部订单数据"""
-    orders_path = Path('/Users/apple/Desktop/linkdolls dashboard/orders/orders_detail_2026_Q1_with_tags.csv')
+    """读取订单数据 - 自动查找最新的订单文件
+    文件命名规范: orders_detail_YYYYMMDD_tags.csv 或 订单明细表导出 - YYYY-MM-DD - YYYY-MM-DD.csv
+    每一年单独一个文件
+    """
+    orders_dir = Path('/Users/apple/Desktop/linkdolls dashboard/orders')
     
-    if not orders_path.exists():
-        print(f"订单文件不存在: {orders_path}")
+    if not orders_dir.exists():
+        print(f"订单目录不存在: {orders_dir}")
         return []
     
-    orders = []
-    with open(orders_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            orders.append(row)
+    import glob
+    # 三种文件命名规范
+    pattern1 = str(orders_dir / 'orders_detail_*_tags.csv')
+    pattern2 = str(orders_dir / '订单明细表导出*.csv')
+    pattern3 = str(orders_dir / '订单明细表*.csv')
     
-    print(f"📦 加载订单: {len(orders)} 行")
+    files = sorted(set(glob.glob(pattern1) + glob.glob(pattern2) + glob.glob(pattern3)), reverse=True)
+    
+    if not files:
+        print(f"没有找到订单文件")
+        all_files = list(orders_dir.iterdir())
+        print(f"目录中的文件: {[f.name for f in all_files]}")
+        return []
+    
+    # 读取所有订单文件并合并
+    orders = []
+    for filepath in files:
+        orders_path = Path(filepath)
+        print(f"📦 读取订单文件: {orders_path.name}")
+        with open(orders_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                orders.append(row)
+    
+    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
     return orders
 
-def calculate_revenue_by_category(orders_all, category):
-    """按页面归因计算收入数据"""
-    # 构造url_path - 需要匹配 Order tag
-    # Order tag 格式可能是：/collections/bbw-sex-doll-torso 或其他
-    url_path = f"/collections/{category}"
-    if category == 'homepage':
-        url_path = '/linkdolls.com'
-    
-    # 筛选：Order tag 匹配
-    filtered = [o for o in orders_all if o.get('Order tag', '').strip() == url_path]
-    
-    if not filtered:
-        return {
-            'orders': 0,
-            'totalSales': 0,
-            'avgPrice': 0,
-            'products': [],
-            'monthlySales': {'01': 0, '02': 0, '03': 0}
-        }
-    
-    # Q1累计销售额 = Net sales 加总
-    total_sales = sum(float(o.get('Net sales', 0) or 0) for o in filtered)
-    
-    # Q1累计订单数 = Order name 去重
-    unique_orders = set(o.get('Order name', '') for o in filtered)
-    order_count = len(unique_orders)
-    
-    # 均单价
-    avg_price = round(total_sales / order_count, 2) if order_count > 0 else 0
-    
-    # 产品明细：按 Product title 分组，剔除 Shipping
-    product_sales = defaultdict(lambda: {'orders': 0, 'sales': 0})
-    for o in filtered:
-        product_title = o.get('Product title', '').strip()
-        if 'Shipping' in product_title:
-            continue
-        net_sales = float(o.get('Net sales', 0) or 0)
-        product_sales[product_title]['orders'] += 1
-        product_sales[product_title]['sales'] += net_sales
-    
-    # 按销售额降序，取前10
-    products = sorted(
-        [{'name': k, 'orders': v['orders'], 'sales': round(v['sales'], 2)} for k, v in product_sales.items()],
-        key=lambda x: x['sales'],
-        reverse=True
-    )[:10]
-    
-    # 月度销售趋势
-    monthly_sales = defaultdict(float)
-    for o in filtered:
-        day = o.get('Day', '').strip()
-        if len(day) >= 7:
-            month = day[5:7]  # MM
-            if month in ['01', '02', '03']:
-                monthly_sales[month] += float(o.get('Net sales', 0) or 0)
-    
-    return {
-        'orders': order_count,
-        'totalSales': round(total_sales, 2),
-        'avgPrice': avg_price,
-        'products': products,
-        'monthlySales': {
-            '01': round(monthly_sales.get('01', 0), 2),
-            '02': round(monthly_sales.get('02', 0), 2),
-            '03': round(monthly_sales.get('03', 0), 2)
-        }
+def get_field(row, field, default=''):
+    """兼容中英文字段名"""
+    # 中文 -> 英文 映射
+    # 英文 -> 中文 映射（CSV列名为中文）
+    mapping = {
+        'Order name': '订单名称',
+        'Product title': '产品标题',
+        'Order tag': '订单标记',
+        'Net sales': '净销售额',
+        'Day': '天',
+        'Gross sales': '毛销售额',
+        'Total sales': '总销售额'
     }
+
+    # 先尝试直接获取
+    if field in row:
+        return row.get(field, default)
+
+    # 再尝试映射后的中文名
+    cn_field = mapping.get(field, field)
+    if cn_field in row:
+        return row.get(cn_field, default)
+
+    # 兼容旧字段名（月→天）
+    fallback = {'天': '月', '月': '天'}
+    if cn_field in fallback and fallback[cn_field] in row:
+        return row.get(fallback[cn_field], default)
+
+    return default
+
+def normalize_order_tag(tag):
+    """去掉 Order tag 中的语言前缀，如 /en-ca/collections/xxx → /collections/xxx"""
+    tag = tag.strip()
+    # 匹配 /xx/ 或 /xx-xx/ 开头的语言前缀
+    normalized = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', tag)
+    return normalized
+
+def calculate_revenue_by_category(orders_all, category):
+    """按页面归因计算收入数据 - 按季度拆分"""
+    # 构造url_path - 需要匹配 Order tag
+    url_path = f"/collections/{category}"
+    if category == 'linkdolls.com':
+        url_path = 'linkdolls.com'
+    
+    # 筛选：Order tag 匹配（去掉语言前缀后比较）
+    filtered = [o for o in orders_all if normalize_order_tag(get_field(o, 'Order tag')) == url_path]
+    
+    # 季度月份映射
+    quarter_months = {
+        'Q1': ['01', '02', '03'],
+        'Q2': ['04', '05', '06'],
+        'Q3': ['07', '08', '09'],
+        'Q4': ['10', '11', '12']
+    }
+    
+    result = {}
+    for q, months in quarter_months.items():
+        # 筛选该季度的订单
+        q_orders = []
+        for o in filtered:
+            day = get_field(o, 'Day', '').strip()
+            if len(day) >= 7:
+                month = day[5:7]
+                if month in months:
+                    q_orders.append(o)
+        
+        if not q_orders:
+            result[q] = {
+                'orders': 0,
+                'totalSales': 0,
+                'avgPrice': 0,
+                'products': [],
+                'monthlySales': {m: 0 for m in months}
+            }
+            continue
+        
+        # 累计销售额
+        total_sales = sum(float(get_field(o, 'Net sales', 0) or 0) for o in q_orders)
+        
+        # 订单数（Order name 去重）
+        unique_orders = set(get_field(o, 'Order name', '') for o in q_orders)
+        order_count = len(unique_orders)
+        
+        # 均单价
+        avg_price = round(total_sales / order_count, 2) if order_count > 0 else 0
+        
+        # 产品明细
+        product_sales = defaultdict(lambda: {'orders': 0, 'sales': 0})
+        for o in q_orders:
+            product_title = get_field(o, 'Product title', '').strip()
+            if 'Shipping' in product_title:
+                continue
+            net_sales = float(get_field(o, 'Net sales', 0) or 0)
+            product_sales[product_title]['orders'] += 1
+            product_sales[product_title]['sales'] += net_sales
+        
+        products = sorted(
+            [{'name': k, 'orders': v['orders'], 'sales': round(v['sales'], 2)} for k, v in product_sales.items()],
+            key=lambda x: x['sales'],
+            reverse=True
+        )[:10]
+        
+        # 月度销售趋势
+        monthly_sales = defaultdict(float)
+        for o in q_orders:
+            day = get_field(o, 'Day', '').strip()
+            if len(day) >= 7:
+                month = day[5:7]
+                monthly_sales[month] += float(get_field(o, 'Net sales', 0) or 0)
+        
+        result[q] = {
+            'orders': order_count,
+            'totalSales': round(total_sales, 2),
+            'avgPrice': avg_price,
+            'products': products,
+            'monthlySales': {m: round(monthly_sales.get(m, 0), 2) for m in months}
+        }
+    
+    return result
 
 def parse_clicks_global(week_folder):
     """从统一目录读取页面元素点击数"""
@@ -299,10 +378,14 @@ def parse_queries(filepath):
     queries = []
     for row in parse_csv(filepath):
         if row.get('热门查询'):
-            rank = float(row.get('排名', 999) or 999)
-            clicks = int(row.get('点击次数', 0) or 0)
-            ctr_str = row.get('点击率', '0%') or '0%'
-            ctr = float(ctr_str.replace('%', ''))
+            try:
+                rank = float(str(row.get('排名', 999) or 999).replace('%', ''))
+                clicks = int(row.get('点击次数', 0) or 0)
+                ctr_str = row.get('点击率', '0%') or '0%'
+                ctr = float(ctr_str.replace('%', ''))
+                imp = int(row.get('展示', 0) or 0)
+            except:
+                continue
             
             if rank <= 3:
                 tag = 'top3'
@@ -319,7 +402,7 @@ def parse_queries(filepath):
                 'kw': row['热门查询'],
                 'rank': round(rank, 2),
                 'clicks': clicks,
-                'imp': int(row.get('展示', 0) or 0),
+                'imp': imp,
                 'ctr': round(ctr, 1),
                 'tag': tag
             })
@@ -467,7 +550,8 @@ def parse_pageviews_global(week_folder, page_config=None):
         for cat, cfg in page_config.items():
             landing_page = cfg.get('landing_page', f'/collections/{cat}')
             path_to_cat[landing_page] = cat
-    
+            if cat == 'linkdolls.com':
+                path_to_cat['/'] = cat
     try:
         with open(target_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -490,6 +574,16 @@ def parse_pageviews_global(week_folder, page_config=None):
         print(f"读取页面浏览数失败: {e}")
     
     return result
+
+def find_file(directory, keyword):
+    """在目录中查找文件名包含 keyword 的第一个文件，找不到返回 None"""
+    try:
+        for f in Path(directory).iterdir():
+            if f.is_file() and keyword in f.name:
+                return f
+    except Exception:
+        pass
+    return None
 
 def aggregate_week(category, week_folder):
     """聚合单周数据"""
@@ -529,7 +623,9 @@ def aggregate_week(category, week_folder):
     result['devices'] = parse_devices(week_path / '设备.csv')
     result['countries'] = parse_devices(week_path / '国家_地区.csv')
     result['clicks'] = parse_clicks(week_path / '页面点击数.csv')
-    result['conversion'] = parse_conversion(week_path / '购买历程_设备类别.csv')
+    conv_file = find_file(week_path, '购买历程_设备类别')
+    if conv_file:
+        result['conversion'] = parse_conversion(conv_file)
     
     if result['gsc']['clicks'] > 0:
         result['hasData'] = True
@@ -594,7 +690,13 @@ def main():
                 data['config'] = page_config.get(category, {
                     'owner': '-', 
                     'q1_traffic_goal': 0, 
-                    'q1_revenue_goal': 0
+                    'q1_revenue_goal': 0,
+                    'q2_traffic_goal': 0,
+                    'q2_revenue_goal': 0,
+                    'q3_traffic_goal': 0,
+                    'q3_revenue_goal': 0,
+                    'q4_traffic_goal': 0,
+                    'q4_revenue_goal': 0
                 })
                 
                 # 注入收入数据
@@ -630,7 +732,8 @@ def main():
     
     # 统计
     with_data = sum(1 for cat in all_data.values() for w in cat.values() if w['hasData'])
-    with_revenue = sum(1 for cat in all_data.values() for w in cat.values() if w.get('revenue', {}).get('orders', 0) > 0)
+    with_revenue = sum(1 for cat in all_data.values() for w in cat.values() 
+                       if any(w.get('revenue', {}).get(q, {}).get('orders', 0) > 0 for q in ['Q1','Q2','Q3','Q4']))
     
     print(f"\n✅ 聚合完成！")
     print(f"   分类数: {len(categories)}")
