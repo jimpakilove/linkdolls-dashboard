@@ -657,7 +657,7 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
     document.getElementById('page-' + item.dataset.page).classList.add('active');
     if (item.dataset.page === 'collection') {
       var frame = document.getElementById('collectionFrame');
-      if (!frame.src || frame.src === 'about:blank') frame.src = 'dashboard_local.html';
+      if (!frame.src || frame.src === 'about:blank') frame.src = 'dashboard_collection.html';
     }
   });
 });
