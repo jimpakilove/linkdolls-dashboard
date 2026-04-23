@@ -506,7 +506,6 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write('.sidebar-footer { padding:16px 20px; font-size:11px; color:#475569; border-top:1px solid rgba(255,255,255,0.1); }\n')
         out.write('.main-content { margin-left:220px; flex:1; min-width:0; }\n')
         out.write('.page { display:none; }\n.page.active { display:block; }\n')
-        out.write('#page-collection iframe { width:100%; border:none; display:block; min-height:100vh; }\n')
         out.write('#page-category .card { background:white; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px; overflow:hidden; }\n')
         out.write('#page-category .card-title { padding:16px 20px; font-size:16px; font-weight:700; border-bottom:1px solid #f0f0f0; }\n')
         out.write('#page-category .cat-badge { display:inline-block; width:24px; height:24px; border-radius:50%; color:white; font-weight:700; font-size:12px; text-align:center; line-height:24px; margin-right:6px; }\n')
@@ -533,7 +532,7 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write('<div class="nav-item active" data-page="top50"><span class="nav-icon">📊</span><span>Top 50 趋势</span></div>\n')
         out.write('<div class="nav-item" data-page="category"><span class="nav-icon">📋</span><span>类别横向对比</span></div>\n')
         out.write('<div class="nav-section">分类页</div>\n')
-        out.write('<div class="nav-item" data-page="collection"><span class="nav-icon">📈</span><span>分类页数据看板</span></div>\n')
+        out.write('<a class="nav-item" href="dashboard_collection.html" style="text-decoration:none;"><span class="nav-icon">📈</span><span>分类页数据看板</span></a>\n')
         out.write('</div>\n<div class="sidebar-footer">W10–W16 数据</div>\n</div>\n')
 
         # Main content
@@ -555,9 +554,6 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write('<div class="table-scroll"><table><thead><tr id="catTableHead"></tr></thead><tbody id="catTableBody"></tbody></table></div></div>\n')
         out.write('</div></div>\n')
 
-        # Collection page (iframe)
-        out.write('<div class="page" id="page-collection">\n')
-        out.write('<iframe id="collectionFrame" src="about:blank"></iframe>\n</div>\n')
         out.write('</div>\n')  # close main-content
 
         # Data
@@ -572,10 +568,7 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write("    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });\n")
         out.write("    item.classList.add('active');\n")
         out.write("    document.getElementById('page-' + item.dataset.page).classList.add('active');\n")
-        out.write("    if (item.dataset.page === 'collection') {\n")
-        out.write("      var frame = document.getElementById('collectionFrame');\n")
-        out.write("      if (!frame.src || frame.src === 'about:blank') frame.src = 'dashboard_collection.html';\n")
-        out.write("    }\n  });\n});\n</script>\n")
+        out.write("  });\n});\n</script>\n")
 
         # Top50 JS
         out.write(f'<script>\n(function() {{\n{top50_js}\n}})();\n</script>\n')
