@@ -40,11 +40,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """执行聚合脚本"""
         try:
             # 执行聚合脚本
+            script_dir = os.path.dirname(os.path.abspath(__file__))
             result = subprocess.run(
                 ['python3', 'aggregate_detail.py'],
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=120,
+                cwd=script_dir
             )
             
             if result.returncode == 0:
@@ -81,7 +83,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     
     def log_message(self, format, *args):
         # 只记录API请求
-        if '/api/' in args[0]:
+        if args and isinstance(args[0], str) and '/api/' in args[0]:
             print(f"[API] {args[0]}")
 
 def main():

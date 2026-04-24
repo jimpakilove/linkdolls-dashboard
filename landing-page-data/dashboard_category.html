@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品类别横向对比</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:#f5f5f5; color:#333; }
+        .container { max-width:1600px; margin:0 auto; padding:20px; }
+        .header { background:white; padding:24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+        .header-title { font-size:28px; font-weight:700; margin-bottom:8px; color:#1a1a1a; }
+        .header-sub { font-size:14px; color:#666; }
+
+        .filters { background:white; padding:16px 24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); display:flex; gap:20px; align-items:center; }
+        .filter-label { font-size:12px; color:#888; margin-bottom:4px; }
+        .filter-select { padding:6px 12px; border:1.5px solid #e5e7eb; border-radius:6px; font-size:13px; }
+        .filter-select:focus { outline:none; border-color:#2563eb; }
+
+        .card { background:white; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px; overflow:hidden; }
+        .card-title { padding:16px 20px; font-size:16px; font-weight:700; border-bottom:1px solid #f0f0f0; }
+
+        .table-scroll { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { background:#fafafa; padding:10px 14px; text-align:right; font-weight:600; color:#666; border-bottom:2px solid #e5e7eb; white-space:nowrap; position:sticky; top:0; }
+        th:first-child, th:nth-child(2) { text-align:left; }
+        td { padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:right; white-space:nowrap; }
+        td:first-child, td:nth-child(2) { text-align:left; }
+        tr:hover { background:#f8fafc; }
+
+        .cat-badge { display:inline-block; width:24px; height:24px; border-radius:50%; color:white; font-weight:700; font-size:12px; text-align:center; line-height:24px; margin-right:6px; }
+        .cat-name { font-weight:600; color:#1a1a1a; }
+
+        .bar-cell { min-width:120px; }
+        .bar-bg { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; margin-top:2px; }
+        .bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }
+
+        .sparkline-canvas { width:100px; height:28px; }
+        .metric-good { color:#059669; }
+        .metric-bad { color:#dc2626; }
+        .wow-positive { color:#059669; font-weight:600; }
+        .wow-negative { color:#dc2626; font-weight:600; }
+
+        .totals-row td { font-weight:700; background:#f8fafc; border-top:2px solid #e5e7eb; }
+
+        .view-tabs { display:flex; gap:6px; }
+        .view-tab { padding:6px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer;
+            border:1.5px solid #e5e7eb; background:white; color:#555; transition:all 0.15s; user-select:none; }
+        .view-tab:hover { border-color:#a5b4fc; background:#f5f3ff; }
+        .view-tab.active { background:#2563eb; color:white; border-color:#2563eb; font-weight:700; }
+    </style>
+</head>
+<body>
+<script id="embedded-data">window.__CAT_DATA__ = {"weeks": ["W10", "W11", "W12", "W13", "W14", "W15", "W16"], "categories": [{"key": "f", "name": "Full Doll 完整娃", "productCount": 5025, "totalViews": 65946, "totalUsers": 62592, "totalCarts": 546, "totalRevenue": 12680.91, "totalOrders": 6, "avgViewsPerProduct": 13.1, "cartRate": 0.83, "convRate": 0.009, "avgBounce": 4.7, "avgEngTime": 52.4, "wow": -4.5, "weeklyViews": [9261, 8283, 9637, 9764, 8684, 10392, 9925], "weeklyUsers": [8945, 7939, 8906, 9093, 8308, 9738, 9663], "weeklyCarts": [86, 63, 83, 74, 104, 73, 63], "weeklyRevenue": [0.0, 0.0, 2627.0, 0.0, 2623.0, 2533.5, 4897.41], "weeklyOrders": [0, 0, 1, 1, 1, 1, 2], "weeklyBounce": [4.5, 4.5, 4.3, 3.7, 4.9, 6.1, 4.8], "weeklyEngTime": [45.2, 45.3, 54.7, 56.7, 72.1, 43.2, 51.1]}, {"key": "a", "name": "Ass 臀部", "productCount": 99, "totalViews": 10050, "totalUsers": 8968, "totalCarts": 135, "totalRevenue": 8173.22, "totalOrders": 22, "avgViewsPerProduct": 101.5, "cartRate": 1.34, "convRate": 0.219, "avgBounce": 5.0, "avgEngTime": 44.1, "wow": 4.3, "weeklyViews": [1437, 1363, 1478, 1602, 1371, 1370, 1429], "weeklyUsers": [1317, 1234, 1312, 1395, 1216, 1189, 1305], "weeklyCarts": [14, 8, 27, 31, 16, 22, 17], "weeklyRevenue": [1992.0, -25.0, 909.08, 2614.0, 1167.0, 391.1, 1125.04], "weeklyOrders": [4, 2, 3, 5, 3, 2, 3], "weeklyBounce": [4.3, 3.7, 3.9, 5.7, 7.3, 5.6, 4.4], "weeklyEngTime": [40.8, 41.2, 37.9, 55.9, 47.2, 45.6, 38.7]}, {"key": "t", "name": "Torso 躯干", "productCount": 437, "totalViews": 16023, "totalUsers": 14327, "totalCarts": 244, "totalRevenue": 10068.05, "totalOrders": 18, "avgViewsPerProduct": 36.7, "cartRate": 1.52, "convRate": 0.112, "avgBounce": 5.5, "avgEngTime": 45.6, "wow": 8.2, "weeklyViews": [2379, 2179, 2483, 2458, 2116, 2117, 2291], "weeklyUsers": [2117, 1986, 2166, 2092, 2030, 1843, 2093], "weeklyCarts": [41, 31, 32, 45, 32, 23, 40], "weeklyRevenue": [2102.93, 699.0, 2321.64, 2547.1, 88.0, 0.0, 2309.38], "weeklyOrders": [4, 1, 4, 5, 1, 0, 3], "weeklyBounce": [3.2, 6.3, 6.2, 4.5, 5.4, 6.4, 6.3], "weeklyEngTime": [46.4, 39.9, 44.9, 51.9, 44.1, 46.6, 44.7]}, {"key": "h", "name": "Head 头部", "productCount": 811, "totalViews": 6063, "totalUsers": 6127, "totalCarts": 146, "totalRevenue": 4559.27, "totalOrders": 9, "avgViewsPerProduct": 7.5, "cartRate": 2.41, "convRate": 0.148, "avgBounce": 5.8, "avgEngTime": 41.1, "wow": 1.4, "weeklyViews": [852, 743, 834, 826, 812, 991, 1005], "weeklyUsers": [867, 785, 895, 844, 800, 978, 958], "weeklyCarts": [29, 18, 14, 15, 15, 17, 38], "weeklyRevenue": [917.1, 913.17, 299.0, 0.0, 499.0, 497.0, 1434.0], "weeklyOrders": [2, 2, 1, 0, 1, 1, 2], "weeklyBounce": [5.2, 5.6, 4.4, 2.5, 5.0, 9.3, 7.3], "weeklyEngTime": [41.2, 40.1, 38.4, 33.7, 31.2, 30.6, 68.4]}, {"key": "p", "name": "Pussy 内部", "productCount": 228, "totalViews": 5290, "totalUsers": 4971, "totalCarts": 73, "totalRevenue": 2283.94, "totalOrders": 12, "avgViewsPerProduct": 23.2, "cartRate": 1.38, "convRate": 0.227, "avgBounce": 5.8, "avgEngTime": 33.3, "wow": 15.1, "weeklyViews": [684, 728, 674, 828, 720, 770, 886], "weeklyUsers": [650, 706, 649, 755, 663, 735, 813], "weeklyCarts": [8, 12, 17, 5, 15, 8, 8], "weeklyRevenue": [82.77, 278.0, 107.1, 1516.0, 208.0, 92.07, 0.0], "weeklyOrders": [1, 2, 1, 4, 2, 1, 1], "weeklyBounce": [4.6, 7.1, 7.7, 5.4, 5.9, 5.8, 4.8], "weeklyEngTime": [30.6, 29.4, 32.5, 33.3, 36.3, 33.6, 36.3]}, {"key": "v", "name": "Vajankle 足踝", "productCount": 24, "totalViews": 1656, "totalUsers": 1357, "totalCarts": 16, "totalRevenue": 199.0, "totalOrders": 1, "avgViewsPerProduct": 69.0, "cartRate": 0.97, "convRate": 0.06, "avgBounce": 5.2, "avgEngTime": 39.1, "wow": 81.5, "weeklyViews": [200, 174, 253, 194, 182, 232, 421], "weeklyUsers": [180, 151, 191, 153, 160, 220, 302], "weeklyCarts": [4, 1, 1, 3, 3, 0, 4], "weeklyRevenue": [199.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "weeklyOrders": [1, 0, 0, 0, 0, 0, 0], "weeklyBounce": [5.2, 6.9, 1.9, 3.4, 6.7, 7.1, 5.5], "weeklyEngTime": [31.0, 29.4, 43.3, 41.1, 37.6, 29.9, 49.2]}, {"key": "l", "name": "Legs 腿部", "productCount": 88, "totalViews": 958, "totalUsers": 870, "totalCarts": 6, "totalRevenue": 1663.1, "totalOrders": 4, "avgViewsPerProduct": 10.9, "cartRate": 0.63, "convRate": 0.418, "avgBounce": 5.2, "avgEngTime": 50.8, "wow": 17.5, "weeklyViews": [112, 164, 166, 98, 144, 126, 148], "weeklyUsers": [101, 120, 132, 99, 159, 113, 146], "weeklyCarts": [0, 3, 1, 0, 0, 1, 1], "weeklyRevenue": [764.1, 899.0, 0.0, 0.0, 0.0, 0.0, 0.0], "weeklyOrders": [1, 1, 0, 0, 2, 0, 0], "weeklyBounce": [5.4, 3.8, 3.9, 3.0, 3.9, 11.5, 5.8], "weeklyEngTime": [37.3, 106.3, 54.4, 40.8, 33.4, 39.5, 28.9]}, {"key": "b", "name": "Boob 胸部", "productCount": 35, "totalViews": 1690, "totalUsers": 1509, "totalCarts": 16, "totalRevenue": 1137.0, "totalOrders": 3, "avgViewsPerProduct": 48.3, "cartRate": 0.95, "convRate": 0.178, "avgBounce": 5.7, "avgEngTime": 36.4, "wow": -2.3, "weeklyViews": [210, 162, 228, 246, 237, 307, 300], "weeklyUsers": [194, 161, 224, 200, 243, 237, 250], "weeklyCarts": [1, 0, 4, 3, 3, 2, 3], "weeklyRevenue": [0.0, 0.0, 0.0, 0.0, 758.0, 379.0, 0.0], "weeklyOrders": [0, 0, 0, 0, 2, 1, 0], "weeklyBounce": [4.2, 6.3, 5.1, 7.8, 3.9, 7.4, 4.9], "weeklyEngTime": [37.4, 26.9, 31.0, 35.4, 42.1, 45.1, 32.2]}, {"key": "m", "name": "Male 男性", "productCount": 76, "totalViews": 86, "totalUsers": 232, "totalCarts": 5, "totalRevenue": 0, "totalOrders": 0, "avgViewsPerProduct": 1.1, "cartRate": 5.81, "convRate": 0.0, "avgBounce": 12.4, "avgEngTime": 33.8, "wow": -69.2, "weeklyViews": [10, 14, 9, 24, 12, 13, 4], "weeklyUsers": [37, 47, 17, 40, 34, 23, 34], "weeklyCarts": [0, 1, 0, 1, 2, 0, 1], "weeklyRevenue": [0, 0, 0, 0, 0, 0, 0], "weeklyOrders": [0, 0, 0, 0, 0, 0, 0], "weeklyBounce": [0.0, 7.1, 17.8, 10.4, 29.8, 15.4, 0.0], "weeklyEngTime": [48.7, 27.5, 33.7, 39.9, 26.8, 27.8, 23.8]}, {"key": "d", "name": "Dildo 假阳具", "productCount": 50, "totalViews": 356, "totalUsers": 351, "totalCarts": 4, "totalRevenue": 0.0, "totalOrders": 2, "avgViewsPerProduct": 7.1, "cartRate": 1.12, "convRate": 0.562, "avgBounce": 7.3, "avgEngTime": 47.8, "wow": 87.8, "weeklyViews": [69, 45, 63, 39, 22, 41, 77], "weeklyUsers": [61, 47, 60, 45, 27, 39, 72], "weeklyCarts": [2, 0, 0, 1, 0, 0, 1], "weeklyRevenue": [0.0, 0.0, 0.0, 0.0, 0.0, 134.1, -134.1], "weeklyOrders": [0, 0, 0, 0, 0, 1, 1], "weeklyBounce": [3.5, 8.0, 7.9, 2.6, 7.6, 11.6, 10.0], "weeklyEngTime": [53.5, 15.7, 32.8, 29.3, 29.3, 55.2, 84.5]}, {"key": "other", "name": "Other 其他", "productCount": 595, "totalViews": 8932, "totalUsers": 8759, "totalCarts": 159, "totalRevenue": 0, "totalOrders": 0, "avgViewsPerProduct": 15.0, "cartRate": 1.78, "convRate": 0.0, "avgBounce": 8.0, "avgEngTime": 45.8, "wow": 2.8, "weeklyViews": [1316, 1301, 1407, 1287, 1149, 1219, 1253], "weeklyUsers": [1229, 1259, 1376, 1244, 1151, 1253, 1247], "weeklyCarts": [21, 26, 30, 24, 8, 28, 22], "weeklyRevenue": [0, 0, 0, 0, 0, 0, 0], "weeklyOrders": [0, 0, 0, 0, 0, 0, 0], "weeklyBounce": [6.3, 7.2, 9.5, 6.4, 5.9, 11.1, 9.8], "weeklyEngTime": [47.6, 42.7, 39.1, 54.3, 48.0, 47.1, 43.0]}], "allWeeklyViews": [16530, 15156, 17232, 17366, 15449, 17578, 17739], "allWeeklyRevenue": [6057.9, 2764.17, 6263.82, 6677.1, 5343.0, 4026.77, 9631.73]};</script>
+<div class="container">
+    <div class="header">
+        <div class="header-title">产品类别横向对比</div>
+        <div class="header-sub">W10–W16 · 按产品首字母分类对比浏览、收入、转化等核心指标</div>
+    </div>
+
+    <div class="filters">
+        <div>
+            <div class="filter-label">查看周</div>
+            <select class="filter-select" id="weekSelector" style="font-weight:700;color:#2563eb;">
+                <option value="all">全部 7 周汇总</option>
+            </select>
+        </div>
+        <div>
+            <div class="filter-label">排序</div>
+            <select class="filter-select" id="sortSelector">
+                <option value="views">按浏览量</option>
+                <option value="revenue">按收入</option>
+                <option value="cartRate">按加购率</option>
+                <option value="convRate">按转化率</option>
+                <option value="avgViews">按人均浏览</option>
+                <option value="count">按产品数</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title" id="tableTitle">类别横向对比 · 7 周汇总</div>
+        <div class="table-scroll">
+            <table>
+                <thead><tr id="tableHead"></tr></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const data = window.__CAT_DATA__;
+
+    const catColors = {
+        'f':'#dc2626','a':'#ea580c','t':'#d97706','h':'#0891b2',
+        'p':'#7c3aed','v':'#65a30d','l':'#16a34a','b':'#ec4899',
+        'm':'#059669','d':'#0284c7','other':'#6b7280'
+    };
+
+    let selectedWeek = -1;
+
+    // Init week selector
+    (function(){
+        const sel = document.getElementById('weekSelector');
+        data.weeks.forEach((w,i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = w + (i === data.weeks.length-1 ? ' (最新)' : '');
+            sel.appendChild(opt);
+        });
+    })();
+
+    function formatMoney(v) { return '$' + v.toLocaleString('en-US',{maximumFractionDigits:0}); }
+    function formatEngTime(s) { return Math.floor(s/60)+'m '+Math.floor(s%60)+'s'; }
+
+    function createSparkline(canvas, values, color) {
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        if (!values || values.length === 0) return;
+        const maxV = Math.max(...values, 1);
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0,0,W,H);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        values.forEach((v,i) => {
+            const x = i/(values.length-1) * (W-8) + 4;
+            const y = H - 4 - (v/maxV)*(H-8);
+            i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+        // Highlight last point
+        const lastX = (values.length-1)/(values.length-1)*(W-8)+4;
+        const lastY = H-4-(values[values.length-1]/maxV)*(H-8);
+        ctx.beginPath();
+        ctx.arc(lastX,lastY,3,0,Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 1;
+        ctx.fill();
+    }
+
+    function render() {
+        const w = selectedWeek;
+        const thead = document.getElementById('tableHead');
+        const tbody = document.getElementById('tableBody');
+        const title = document.getElementById('tableTitle');
+
+        const isAll = w === -1;
+        const label = isAll ? '7 周汇总' : data.weeks[w];
+        title.textContent = '类别横向对比 · ' + label;
+
+        thead.innerHTML = `
+            <th>类别</th><th>名称</th><th>产品数</th>
+            <th>浏览量</th><th>浏览占比</th><th>7周走势</th>
+            <th>活跃用户</th><th>人均浏览</th><th>环比</th>
+            <th>加购数</th><th>加购率</th>
+            <th>订单数</th><th>转化率</th>
+            <th>收入</th><th>收入占比</th>
+            <th>跳出率</th><th>互动时长</th>`;
+
+        // Compute metrics
+        let rows = data.categories.map(c => {
+            let views, users, carts, orders, rev, bounce, eng, wow;
+            if (isAll) {
+                views = c.totalViews;
+                users = c.totalUsers;
+                carts = c.totalCarts;
+                orders = c.totalOrders;
+                rev = c.totalRevenue;
+                bounce = c.avgBounce;
+                eng = c.avgEngTime;
+                const v6 = c.weeklyViews[6], v5 = c.weeklyViews[5];
+                wow = v5 > 0 ? ((v6-v5)/v5*100).toFixed(1) : '—';
+            } else {
+                views = c.weeklyViews[w];
+                users = c.weeklyUsers[w];
+                carts = c.weeklyCarts[w];
+                orders = c.weeklyOrders[w];
+                rev = c.weeklyRevenue[w];
+                bounce = c.weeklyBounce[w];
+                eng = c.weeklyEngTime[w];
+                if (w > 0 && c.weeklyViews[w-1] > 0) {
+                    wow = ((views - c.weeklyViews[w-1])/c.weeklyViews[w-1]*100).toFixed(1);
+                } else { wow = '—'; }
+            }
+            const cartRate = views > 0 ? (carts/views*100).toFixed(2) : '0';
+            const convRate = views > 0 ? (orders/views*100).toFixed(3) : '0';
+            const avgV = c.productCount > 0 ? (views/c.productCount).toFixed(1) : '0';
+            return { ...c, views, users, carts, orders, rev, bounce, eng, wow, cartRate, convRate, avgV };
+        });
+
+        // Sort
+        const sortBy = document.getElementById('sortSelector').value;
+        const sortFn = {
+            'views': (a,b) => b.views - a.views,
+            'revenue': (a,b) => b.rev - a.rev,
+            'cartRate': (a,b) => parseFloat(b.cartRate) - parseFloat(a.cartRate),
+            'convRate': (a,b) => parseFloat(b.convRate) - parseFloat(a.convRate),
+            'avgViews': (a,b) => parseFloat(b.avgV) - parseFloat(a.avgV),
+            'count': (a,b) => b.productCount - a.productCount,
+        }[sortBy] || ((a,b) => b.views - a.views);
+        rows.sort(sortFn);
+
+        // Totals
+        const totalViews = rows.reduce((s,r) => s+r.views, 0);
+        const totalRev = rows.reduce((s,r) => s+r.rev, 0);
+
+        tbody.innerHTML = '';
+        rows.forEach(r => {
+            const viewsPct = totalViews > 0 ? (r.views/totalViews*100).toFixed(1) : '0';
+            const revPct = totalRev > 0 ? (r.rev/totalRev*100).toFixed(1) : '0';
+            const color = catColors[r.key] || '#6b7280';
+            const wowClass = r.wow !== '—' ? (parseFloat(r.wow) >= 0 ? 'wow-positive' : 'wow-negative') : '';
+            const wowText = r.wow !== '—' ? (parseFloat(r.wow) > 0 ? '+'+r.wow+'%' : r.wow+'%') : '—';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="cat-badge" style="background:${color}">${r.key === 'other' ? '?' : r.key.toUpperCase()}</span></td>
+                <td class="cat-name">${r.name}</td>
+                <td>${r.productCount.toLocaleString()}</td>
+                <td style="font-weight:700">${r.views.toLocaleString()}</td>
+                <td class="bar-cell">
+                    <span>${viewsPct}%</span>
+                    <div class="bar-bg"><div class="bar-fill" style="width:${viewsPct}%;background:${color};"></div></div>
+                </td>
+                <td><canvas class="sparkline-canvas" data-values='${JSON.stringify(r.weeklyViews)}' data-color='${color}'></canvas></td>
+                <td>${r.users.toLocaleString()}</td>
+                <td>${r.avgV}</td>
+                <td><span class="${wowClass}">${wowText}</span></td>
+                <td>${r.carts}</td>
+                <td>${r.cartRate}%</td>
+                <td>${r.orders}</td>
+                <td>${r.convRate}%</td>
+                <td style="font-weight:600">${formatMoney(r.rev)}</td>
+                <td class="bar-cell">
+                    <span>${revPct}%</span>
+                    <div class="bar-bg"><div class="bar-fill" style="width:${revPct}%;background:#059669;"></div></div>
+                </td>
+                <td>${r.bounce.toFixed(1)}%</td>
+                <td>${formatEngTime(r.eng)}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        // Totals row
+        const totalCarts = rows.reduce((s,r) => s+r.carts, 0);
+        const totalOrders = rows.reduce((s,r) => s+r.orders, 0);
+        const totalUsers = rows.reduce((s,r) => s+r.users, 0);
+        const totalCartRate = totalViews > 0 ? (totalCarts/totalViews*100).toFixed(2) : '0';
+        const totalConvRate = totalViews > 0 ? (totalOrders/totalViews*100).toFixed(3) : '0';
+        const totalCount = rows.reduce((s,r) => s+r.productCount, 0);
+
+        const totTr = document.createElement('tr');
+        totTr.className = 'totals-row';
+        totTr.innerHTML = `
+            <td></td><td class="cat-name">合计</td>
+            <td>${totalCount.toLocaleString()}</td>
+            <td>${totalViews.toLocaleString()}</td><td>100%</td><td></td>
+            <td>${totalUsers.toLocaleString()}</td><td>${(totalViews/totalCount).toFixed(1)}</td><td></td>
+            <td>${totalCarts}</td><td>${totalCartRate}%</td>
+            <td>${totalOrders}</td><td>${totalConvRate}%</td>
+            <td style="font-weight:700">${formatMoney(totalRev)}</td><td>100%</td>
+            <td></td><td></td>`;
+        tbody.appendChild(totTr);
+
+        // Draw sparklines
+        document.querySelectorAll('canvas.sparkline-canvas').forEach(canvas => {
+            const vals = JSON.parse(canvas.getAttribute('data-values'));
+            const col = canvas.getAttribute('data-color');
+            createSparkline(canvas, vals, col);
+        });
+    }
+
+    document.getElementById('weekSelector').addEventListener('change', function() {
+        selectedWeek = this.value === 'all' ? -1 : parseInt(this.value);
+        render();
+    });
+    document.getElementById('sortSelector').addEventListener('change', render);
+
+    render();
+</script>
+</body>
+</html>

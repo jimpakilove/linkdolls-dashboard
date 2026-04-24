@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上架工具 v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f3ef;--surface:#fff;--surface2:#f0efe9;--surface3:#e8e6de;
+  --border:#dddbd2;--border2:#c8c5ba;
+  --text:#1c1b17;--text2:#6b6a62;--text3:#a09e95;
+  --accent:#1c1b17;--accent-fg:#f4f3ef;
+  --blue:#1a56db;--blue-bg:#eff6ff;
+  --green:#1a6b3a;--green-bg:#f0fdf4;
+  --orange:#c2410c;--orange-bg:#fff7ed;
+  --red:#b91c1c;--red-bg:#fef2f2;
+  --r:10px;--r-sm:6px;--r-xs:4px;
+}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:100px;}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:13px 28px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;}
+.tb-mark{width:28px;height:28px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tb-mark svg{width:15px;height:15px;}
+.tb-name{font-size:14px;font-weight:500;}
+.tb-sep{width:1px;height:14px;background:var(--border2);margin:0 4px;}
+.tb-sub{font-size:12px;color:var(--text3);}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.tb-badge{font-size:11.5px;font-family:'IBM Plex Mono',monospace;padding:3px 9px;border-radius:20px;background:var(--surface2);color:var(--text3);}
+.tb-badge.ok{background:var(--green-bg);color:var(--green);}
+
+.layout{max-width:1060px;margin:0 auto;padding:24px 20px;display:grid;grid-template-columns:1fr 310px;gap:16px;align-items:start;}
+.main-col{display:flex;flex-direction:column;gap:14px;}
+.side-col{display:flex;flex-direction:column;gap:14px;position:sticky;top:67px;}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.card-head{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.card-head h2{font-size:11.5px;font-weight:500;color:var(--text2);letter-spacing:.4px;text-transform:uppercase;font-family:'IBM Plex Mono',monospace;}
+.cchip{margin-left:auto;font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:var(--text3);font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
+.cchip.ok{background:var(--green-bg);color:var(--green);}
+.cchip.warn{background:var(--orange-bg);color:var(--orange);}
+.cchip.ai{background:var(--blue-bg);color:var(--blue);}
+.card-body{padding:16px 18px;}
+
+/* drive input */
+.drive-wrap{display:flex;border:1.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden;transition:border-color .15s;}
+.drive-wrap:focus-within{border-color:var(--accent);}
+.drive-icon{padding:0 13px;height:46px;display:flex;align-items:center;background:var(--surface2);border-right:1.5px solid var(--border);flex-shrink:0;}
+.drive-inp{flex:1;height:46px;background:var(--surface2);border:none;outline:none;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);padding:0 12px;}
+.drive-inp::placeholder{color:var(--text3);}
+.drive-btn{height:46px;padding:0 20px;background:var(--accent);color:var(--accent-fg);border:none;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:500;flex-shrink:0;transition:opacity .15s;}
+.drive-btn:hover{opacity:.85;}
+.drive-btn:disabled{opacity:.35;cursor:not-allowed;}
+.parse-log{padding:9px 13px;background:var(--surface2);border-top:1px solid var(--border);font-size:11.5px;color:var(--text2);font-family:'IBM Plex Mono',monospace;display:none;line-height:1.7;}
+.parse-log.show{display:block;}
+.oauth-nudge{display:none;margin-top:10px;padding:10px 13px;background:var(--blue-bg);border:1px solid #bfdbfe;border-radius:var(--r-sm);align-items:center;gap:10px;}
+.oauth-nudge.show{display:flex;}
+.oauth-nudge-txt{flex:1;font-size:12px;color:#1e3a8a;line-height:1.5;}
+
+/* file grid */
+.file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:7px;margin-top:12px;}
+.fc{border-radius:var(--r-sm);border:1.5px solid var(--border);aspect-ratio:1;overflow:hidden;position:relative;background:var(--surface2);cursor:default;}
+.fc.selected{border-color:var(--accent);}
+.fc img{width:100%;height:100%;object-fit:cover;}
+.fc-lbl{position:absolute;bottom:0;left:0;right:0;font-size:9px;padding:2px 4px;background:rgba(0,0,0,.65);color:#fff;font-family:'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fc-badge{position:absolute;top:3px;right:3px;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;}
+.fc-badge.prod{background:rgba(28,27,23,.8);color:#f4f3ef;}
+.fc-badge.fact{background:rgba(194,65,12,.85);color:#fff;}
+.fc-badge.vid{background:rgba(26,86,219,.85);color:#fff;}
+.fc-badge.doc{background:rgba(26,107,58,.85);color:#fff;}
+.fc-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:100%;}
+.fc-icon span{font-size:9px;color:var(--text3);font-family:'IBM Plex Mono',monospace;text-align:center;padding:0 4px;line-height:1.3;}
+
+/* fields */
+.fields{display:flex;flex-direction:column;gap:12px;}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:11px;font-weight:500;color:var(--text2);font-family:'IBM Plex Mono',monospace;letter-spacing:.2px;display:flex;align-items:center;gap:5px;}
+.ai-dot{width:5px;height:5px;border-radius:50%;background:var(--blue);flex-shrink:0;}
+.req{color:var(--orange);}
+input[type=text],input[type=number],input[type=url],input[type=password],textarea,select{
+  width:100%;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r-sm);
+  padding:8px 11px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);
+  outline:none;transition:border-color .15s;line-height:1.5;
+}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);}
+.ai-filled{border-color:#93c5fd !important;background:#eff6ff !important;}
+input::placeholder,textarea::placeholder{color:var(--text3);}
+textarea{resize:vertical;min-height:60px;}
+select option{background:var(--surface);}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.fhint{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
+.fhint.ok{color:var(--green);}
+.fhint.err{color:var(--red);}
+
+/* info box */
+.info-box{background:var(--blue-bg);border:1px solid #bfdbfe;border-radius:var(--r-sm);padding:10px 13px;font-size:12.5px;color:#1e3a8a;line-height:1.6;margin-bottom:12px;}
+
+/* asset list */
+.asset-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+.asset-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:var(--r-sm);font-size:12px;font-family:'IBM Plex Mono',monospace;}
+.asset-icon{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:500;}
+.asset-icon.img{background:var(--green-bg);color:var(--green);}
+.asset-icon.vid{background:var(--blue-bg);color:var(--blue);}
+.asset-name{flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.asset-status{font-size:10px;color:var(--text3);flex-shrink:0;}
+.asset-status.done{color:var(--green);}
+.asset-status.proc{color:var(--orange);}
+.asset-status.err{color:var(--red);}
+
+/* progress */
+.prog-wrap{margin-top:10px;}
+.prog-bar{height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;}
+.prog-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s;}
+.prog-lbl{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:5px;}
+
+/* buttons */
+.btn{padding:9px 18px;border-radius:var(--r-sm);font-size:13.5px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;border:1.5px solid var(--border2);background:var(--surface);color:var(--text);transition:all .15s;white-space:nowrap;}
+.btn:hover{background:var(--surface2);}
+.btn:active{transform:scale(.98);}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);}
+.btn.primary:hover{opacity:.88;}
+.btn.primary:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+.btn.sm{padding:6px 13px;font-size:12.5px;}
+.btn-google{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:8px 16px;border-radius:var(--r-sm);background:#fff;color:#3c4043;border:1.5px solid var(--border2);font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;width:100%;}
+.btn-google:hover{background:#f8f8f8;}
+.btn-google svg{width:15px;height:15px;flex-shrink:0;}
+
+/* action bar */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1.5px solid var(--border);padding:13px 28px;display:flex;align-items:center;gap:10px;z-index:100;}
+.action-status{font-size:12px;color:var(--text2);flex:1;font-family:'IBM Plex Mono',monospace;}
+
+/* toast */
+.toast-wrap{position:fixed;bottom:72px;right:18px;display:flex;flex-direction:column;gap:5px;z-index:9999;}
+.toast{padding:9px 14px;border-radius:var(--r-sm);font-size:12.5px;font-family:'IBM Plex Mono',monospace;max-width:270px;animation:tIn .15s ease;border:1.5px solid transparent;}
+.toast.success{background:var(--green-bg);color:var(--green);border-color:#bbf7d0;}
+.toast.error{background:var(--red-bg);color:var(--red);border-color:#fecaca;}
+.toast.info{background:var(--surface);color:var(--text2);border-color:var(--border);}
+@keyframes tIn{from{transform:translateX(12px);opacity:0}to{transform:translateX(0);opacity:1}}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+::-webkit-scrollbar-track{background:transparent;}
+@media(max-width:820px){.layout{grid-template-columns:1fr;}.side-col{position:static;}.row3{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="tb-mark">
+    <svg viewBox="0 0 15 15" fill="none">
+      <rect x="1" y="1" width="5.5" height="5.5" rx="1.2" fill="#f4f3ef"/>
+      <rect x="8.5" y="1" width="5.5" height="5.5" rx="1.2" fill="#f4f3ef" opacity=".5"/>
+      <rect x="1" y="8.5" width="5.5" height="5.5" rx="1.2" fill="#f4f3ef" opacity=".5"/>
+      <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.2" fill="#f4f3ef" opacity=".3"/>
+    </svg>
+  </div>
+  <span class="tb-name">上架工具</span>
+  <div class="tb-sep"></div>
+  <span class="tb-sub">输出 CSV + 资源包</span>
+  <div class="tb-right">
+    <div class="tb-badge" id="google-badge" style="display:none;">Google 已授权</div>
+    <div class="tb-badge" id="ai-badge" style="display:none;">AI 已配置</div>
+  </div>
+</div>
+
+<div class="layout">
+<div class="main-col">
+
+  <!-- Drive 解析 -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Google Drive 文件夹</h2>
+      <span class="cchip" id="parse-chip" style="margin-left:auto;">待解析</span>
+    </div>
+    <div class="card-body">
+      <div class="drive-wrap">
+        <div class="drive-icon">
+          <svg width="18" height="15" viewBox="0 0 87.3 78" fill="none">
+            <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28.16 50H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+            <path d="M43.65 25L29.2 0c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5A9 9 0 000 50h28.16z" fill="#00ac47"/>
+            <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 54.5c.8-1.4 1.2-2.95 1.2-4.5H59.14l5.97 10.9z" fill="#ea4335"/>
+            <path d="M43.65 25L58.1 50H86.3c0-1.55-.4-3.1-1.2-4.5L61.25 3.3C60.45 1.9 59.3.8 57.95 0z" fill="#00832d"/>
+            <path d="M59.14 50H28.16L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+            <path d="M73.4 26.5l-12.15-21c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.14 50h27.1c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+          </svg>
+        </div>
+        <input class="drive-inp" id="drive-url" type="url" placeholder="https://drive.google.com/drive/folders/xxx" onkeydown="if(event.key==='Enter')parseDrive()">
+        <button class="drive-btn" id="parse-btn" onclick="parseDrive()">解析</button>
+      </div>
+      <div class="parse-log" id="parse-log"></div>
+      <div class="oauth-nudge" id="oauth-nudge">
+        <div class="oauth-nudge-txt">该文件夹需要授权访问，请先登录 Google</div>
+        <button class="btn sm" onclick="startOAuth()">Google 登录</button>
+      </div>
+      <div id="file-grid-wrap" style="display:none;">
+        <div style="font-size:10.5px;color:var(--text3);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.4px;padding:12px 0 7px;border-bottom:1px solid var(--border);margin-bottom:10px;">识别到的文件</div>
+        <div class="file-grid" id="file-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 产品信息 -->
+  <div class="card">
+    <div class="card-head">
+      <h2>产品信息</h2>
+      <span class="cchip ai" style="margin-left:auto;">蓝色边框 = AI 填充</span>
+    </div>
+    <div class="card-body">
+      <div class="fields">
+        <div class="field"><label><span class="ai-dot"></span>产品标题 <span class="req">*</span></label><input type="text" id="f-title" placeholder="产品标题"></div>
+        <div class="field"><label><span class="ai-dot"></span>产品副标题</label><input type="text" id="f-subtitle" placeholder="副标题（metafield: subtitle）"></div>
+        <div class="row3">
+          <div class="field"><label><span class="ai-dot"></span>售价 <span class="req">*</span></label><input type="number" id="f-price" placeholder="1999.00" step="0.01"></div>
+          <div class="field"><label><span class="ai-dot"></span>划线价</label><input type="number" id="f-compare" placeholder="2599.00" step="0.01"></div>
+          <div class="field"><label>成本价</label><input type="number" id="f-cost" placeholder="650.00" step="0.01"></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label><span class="ai-dot"></span>SKU <span class="req">*</span></label><input type="text" id="f-sku" placeholder="S66"></div>
+          <div class="field"><label>库存数量</label><input type="number" id="f-inventory" placeholder="0"></div>
+          <div class="field"><label>生产天数</label><input type="number" id="f-production" placeholder="20"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label><span class="ai-dot"></span>Vendor</label><input type="text" id="f-vendor" placeholder="Notye"></div>
+          <div class="field"><label><span class="ai-dot"></span>产品类型</label><input type="text" id="f-type" placeholder="Silicone Sex Dolls"></div>
+        </div>
+        <div class="field"><label><span class="ai-dot"></span>Tags（逗号分隔）</label><input type="text" id="f-tags" placeholder="silicone, torso, big ass"></div>
+        <div class="row2">
+          <div class="field"><label>运输重量含包装</label><input type="number" id="f-weight" placeholder="20" step="0.1"></div>
+          <div class="field"><label>单位</label><select id="f-wunit"><option value="kg">kg</option><option value="g">g</option><option value="lb">lb</option></select></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEO -->
+  <div class="card">
+    <div class="card-head"><h2>SEO</h2></div>
+    <div class="card-body">
+      <div class="fields">
+        <div class="field"><label><span class="ai-dot"></span>SEO 标题</label><input type="text" id="f-seo-title" placeholder="建议 70 字符以内" oninput="cntSeo(this,'sh',70)"><div class="fhint" id="sh"></div></div>
+        <div class="field"><label><span class="ai-dot"></span>SEO 描述</label><textarea id="f-seo-desc" rows="2" placeholder="建议 160 字符以内" oninput="cntSeo(this,'sd',160)"></textarea><div class="fhint" id="sd"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 上架设置 -->
+  <div class="card">
+    <div class="card-head"><h2>上架设置</h2></div>
+    <div class="card-body">
+      <div class="row2">
+        <div class="field"><label>发布状态</label><select id="f-status"><option value="true">立即上架 (true)</option><option value="false">草稿 (false)</option></select></div>
+        <div class="field"><label>售罄策略</label><select id="f-inv-policy"><option value="deny">停止销售 (deny)</option><option value="continue">继续销售 (continue)</option></select></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-col -->
+
+<div class="side-col">
+
+  <!-- 配置 -->
+  <div class="card">
+    <div class="card-head"><h2>Drive 访问配置</h2></div>
+    <div class="card-body">
+      <div class="fields">
+        <div class="field">
+          <label>Drive API Key <span style="color:var(--text3);font-weight:400;">（公开文件夹）</span></label>
+          <input type="password" id="cfg-dkey" placeholder="AIza..." oninput="saveCfg()">
+        </div>
+        <div class="field">
+          <label>OAuth Client ID <span style="color:var(--text3);font-weight:400;">（私有文件夹）</span></label>
+          <input type="text" id="cfg-ocid" placeholder="xxx.apps.googleusercontent.com" oninput="saveCfg()">
+        </div>
+        <button class="btn-google" onclick="startOAuth()">
+          <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Google 账号授权
+        </button>
+        <div id="google-status" style="font-size:11.5px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 配置 -->
+  <div class="card">
+    <div class="card-head"><h2>AI 字段提取</h2></div>
+    <div class="card-body">
+      <div class="fields">
+        <div class="field"><label>模型</label><select id="cfg-aimodel" onchange="saveCfg();updateAiLabel()"><option value="qwen">阿里百炼（通义千问）</option><option value="minimax">MiniMax</option></select></div>
+        <div class="field"><label id="cfg-aikey-lbl">API Key（阿里百炼）</label><input type="password" id="cfg-aikey" placeholder="sk-..." oninput="saveCfg()"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 资源识别预览 -->
+  <div class="card" id="assets-card" style="display:none;">
+    <div class="card-head">
+      <h2>识别到的资源</h2>
+      <span class="cchip" id="assets-chip" style="margin-left:auto;">0 个</span>
+    </div>
+    <div class="card-body">
+      <div class="asset-list" id="asset-list"></div>
+      <div class="prog-wrap" id="dl-prog-wrap" style="display:none;">
+        <div class="prog-bar"><div class="prog-fill" id="dl-prog-fill"></div></div>
+        <div class="prog-lbl" id="dl-prog-lbl"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 命名规范 -->
+  <div class="card">
+    <div class="card-head"><h2>命名规范</h2></div>
+    <div class="card-body">
+      <p style="font-size:12px;color:var(--text2);line-height:2;font-family:'IBM Plex Mono',monospace;">
+        产品图：<span style="color:var(--accent);">{SKU}_{序号}.webp</span><br>
+        工厂图：<span style="color:var(--accent);">{SKU}_factory_{序号}.webp</span><br>
+        视频：<span style="color:var(--accent);">{标题}_{序号}.mp4</span><br><br>
+        竖图 750x1000 · 方图 800x800<br>
+        图片上限 150KB
+      </p>
+    </div>
+  </div>
+
+</div><!-- /side-col -->
+</div><!-- /layout -->
+
+<div class="action-bar">
+  <span class="action-status" id="action-status">解析 Drive 文件夹，填写产品信息，然后导出</span>
+  <button class="btn" onclick="clearAll()">清空</button>
+  <button class="btn primary" id="export-btn" onclick="doExport()">导出 CSV + 资源包</button>
+</div>
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script charset="utf-8">
+// ═══════════════ STATE ═══════════════
+var S = {
+  oauthToken: null,
+  oauthUser: null,
+  driveFiles: [],   // {id, name, mimeType, type, order}  type: prod|factory|video|doc
+  prodIdx: 0,
+  factoryIdx: 0,
+  videoIdx: 0,
+};
+
+// ═══════════════ INIT ═══════════════
+document.addEventListener('DOMContentLoaded', function() {
+  loadCfg();
+  updateAiLabel();
+  var tok = sessionStorage.getItem('g_tok');
+  var usr = sessionStorage.getItem('g_usr');
+  if (tok) {
+    S.oauthToken = tok;
+    if (usr) { try { S.oauthUser = JSON.parse(usr); } catch(e){} }
+    updateGoogleStatus();
+  }
+});
+
+// ═══════════════ CONFIG ═══════════════
+function saveCfg() {
+  localStorage.setItem('v2_dkey',   document.getElementById('cfg-dkey').value);
+  localStorage.setItem('v2_ocid',   document.getElementById('cfg-ocid').value);
+  localStorage.setItem('v2_aikey',  document.getElementById('cfg-aikey').value);
+  localStorage.setItem('v2_aimodel',document.getElementById('cfg-aimodel').value);
+  updateAiBadge();
+}
+function loadCfg() {
+  sv('cfg-dkey',    localStorage.getItem('v2_dkey')||'');
+  sv('cfg-ocid',    localStorage.getItem('v2_ocid')||'');
+  sv('cfg-aikey',   localStorage.getItem('v2_aikey')||'');
+  var m = localStorage.getItem('v2_aimodel')||'qwen';
+  document.getElementById('cfg-aimodel').value = m;
+  updateAiBadge();
+}
+function updateAiLabel() {
+  var m = gv('cfg-aimodel');
+  document.getElementById('cfg-aikey-lbl').textContent = 'API Key（' + (m==='qwen'?'阿里百炼':'MiniMax') + '）';
+}
+function updateAiBadge() {
+  var el = document.getElementById('ai-badge');
+  el.style.display = gv('cfg-aikey') ? '' : 'none';
+  if (gv('cfg-aikey')) el.className = 'tb-badge ok';
+}
+function gv(id) { var el=document.getElementById(id); return el?el.value:''; }
+function sv(id,val) { var el=document.getElementById(id); if(el&&val!==null)el.value=val; }
+
+// ═══════════════ GOOGLE OAUTH ═══════════════
+function startOAuth() {
+  var cid = (gv('cfg-ocid')||'').trim();
+  if (!cid) { toast('请先填写 OAuth Client ID','error'); return; }
+  var redir = location.href.split('#')[0].split('?')[0];
+  var url = 'https://accounts.google.com/o/oauth2/v2/auth?client_id='+encodeURIComponent(cid)+
+    '&redirect_uri='+encodeURIComponent(redir)+
+    '&response_type=token&scope='+encodeURIComponent('https://www.googleapis.com/auth/drive.readonly')+
+    '&prompt=select_account';
+  var w=520,h=600,left=(screen.width-w)/2,top=(screen.height-h)/2;
+  var popup = window.open(url,'goauth','width='+w+',height='+h+',left='+left+',top='+top);
+  var timer = setInterval(function(){
+    try {
+      var hash = popup.location.hash;
+      if (hash && hash.includes('access_token')) {
+        clearInterval(timer); popup.close();
+        var p={};
+        hash.substring(1).split('&').forEach(function(x){var kv=x.split('=');p[kv[0]]=decodeURIComponent(kv[1]||'');});
+        if (p.access_token) {
+          S.oauthToken = p.access_token;
+          sessionStorage.setItem('g_tok', p.access_token);
+          fetchGUser(p.access_token);
+          toast('Google 授权成功','success');
+          if (window._pendFid) { var f=window._pendFid; window._pendFid=null; setTimeout(function(){doFetch(f);},300); }
+        }
+      }
+    } catch(e) {}
+    if (popup.closed) clearInterval(timer);
+  }, 500);
+}
+async function fetchGUser(tok) {
+  try {
+    var r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+tok}});
+    var u = await r.json(); S.oauthUser = u;
+    sessionStorage.setItem('g_usr', JSON.stringify(u));
+    updateGoogleStatus();
+  } catch(e) {}
+}
+function updateGoogleStatus() {
+  var el = document.getElementById('google-status');
+  var badge = document.getElementById('google-badge');
+  if (S.oauthUser) {
+    var name = S.oauthUser.name || S.oauthUser.email || '已授权';
+    el.textContent = '已登录：' + name;
+    el.style.color = 'var(--green)';
+    badge.style.display = '';
+    badge.className = 'tb-badge ok';
+    badge.textContent = name;
+  }
+}
+
+// ═══════════════ DRIVE PARSE ═══════════════
+function extractFid(url) { var m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; }
+
+async function parseDrive() {
+  var url = gv('drive-url').trim();
+  if (!url) { toast('请输入 Google Drive 文件夹链接','error'); return; }
+  var fid = extractFid(url);
+  if (!fid) { toast('无法识别文件夹 ID','error'); return; }
+  setLog('正在读取文件夹...', true);
+  setCC('parse-chip','解析中','');
+  document.getElementById('parse-btn').disabled = true;
+  document.getElementById('oauth-nudge').classList.remove('show');
+  S.driveFiles = [];
+  await doFetch(fid);
+  document.getElementById('parse-btn').disabled = false;
+}
+
+async function doFetch(fid, parentType) {
+  var headers = {};
+  var url = 'https://www.googleapis.com/drive/v3/files?q='+
+    encodeURIComponent('"'+fid+'" in parents and trashed=false')+
+    '&fields=files(id,name,mimeType,thumbnailLink)&pageSize=1000';
+  if (S.oauthToken) { headers['Authorization'] = 'Bearer '+S.oauthToken; }
+  else if (gv('cfg-dkey')) { url += '&key='+gv('cfg-dkey'); }
+  else { setLog('未配置 Drive 访问凭据，请在右侧面板填写 API Key 或 Google 登录', true); setCC('parse-chip','需要配置','warn'); return; }
+  try {
+    var r = await fetch(url, {headers:headers});
+    var d = await r.json();
+    if (d.error) {
+      if (d.error.code===401||d.error.code===403) {
+        setLog('该文件夹需要授权访问', true);
+        window._pendFid = fid;
+        document.getElementById('oauth-nudge').classList.add('show');
+        setCC('parse-chip','需要授权','warn'); return;
+      }
+      throw new Error(d.error.message);
+    }
+    await classifyFiles(d.files||[], parentType);
+  } catch(e) {
+    setLog('读取失败：'+e.message, true);
+    setCC('parse-chip','失败','warn');
+    toast(e.message,'error');
+  }
+}
+
+async function classifyFiles(files, parentType) {
+  var imgR = /\.(jpg|jpeg|png|webp|gif)$/i;
+  var vidR = /\.(mp4|mov|avi|mkv|webm)$/i;
+  var docR = /\.(docx|xlsx|txt|pdf|csv)$/i;
+  var subFolders = [];
+
+  for (var i=0; i<files.length; i++) {
+    var f = files[i];
+    var isFact = /factory/i.test(f.name) || parentType === 'factory';
+    var isVid = vidR.test(f.name) || f.mimeType==='video/mp4' || /^video\//.test(f.mimeType);
+    var isImg = imgR.test(f.name) || /^image\//.test(f.mimeType);
+    var isDoc = /google-apps\.(document|spreadsheet)/.test(f.mimeType) || /(word|excel|spreadsheet|text|pdf)/.test(f.mimeType) || docR.test(f.name);
+    var isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+
+    if (isFolder) {
+      var ft = /factory/i.test(f.name) ? 'factory' : parentType;
+      subFolders.push({id:f.id, type:ft});
+    } else if (isVid) {
+      f._type = 'video'; S.driveFiles.push(f);
+    } else if (isImg) {
+      f._type = isFact ? 'factory' : 'prod'; S.driveFiles.push(f);
+    } else if (isDoc) {
+      f._type = 'doc'; S.driveFiles.push(f);
+    }
+  }
+  // Recurse into subfolders
+  for (var j=0; j<subFolders.length; j++) {
+    await doFetch(subFolders[j].id, subFolders[j].type);
+  }
+}
+
+async function processFiles() {
+  var files = S.driveFiles;
+  if (!files.length) { setLog('文件夹为空或无权限', true); setCC('parse-chip','无文件','warn'); return; }
+
+  var prods = files.filter(function(f){return f._type==='prod';});
+  var facts = files.filter(function(f){return f._type==='factory';});
+  var vids  = files.filter(function(f){return f._type==='video';});
+  var docs  = files.filter(function(f){return f._type==='doc';});
+
+  setLog('完成：'+prods.length+' 张产品图 / '+facts.length+' 张工厂图 / '+vids.length+' 个视频 / '+docs.length+' 个文档', true);
+  setCC('parse-chip','已解析 '+files.length+' 个','ok');
+
+  renderFileGrid(prods, facts, vids, docs);
+  renderAssetList(prods, facts, vids);
+
+  if (docs.length) await extractFromDocs(docs);
+  document.getElementById('file-grid-wrap').style.display = '';
+  document.getElementById('assets-card').style.display = '';
+}
+
+function renderFileGrid(prods, facts, vids, docs) {
+  var grid = document.getElementById('file-grid'); grid.innerHTML = '';
+  var all = prods.map(function(f){return{f:f,t:'prod'};})
+    .concat(facts.map(function(f){return{f:f,t:'fact'};}))
+    .concat(vids.map(function(f){return{f:f,t:'vid'};}))
+    .concat(docs.map(function(f){return{f:f,t:'doc'};}));
+  all.forEach(function(item){
+    var div = document.createElement('div'); div.className='fc';
+    var labels = {prod:'产品图',fact:'工厂图',vid:'视频',doc:'文档'};
+    if (item.t==='prod'||item.t==='fact') {
+      var th = item.f.thumbnailLink||'https://drive.google.com/thumbnail?id='+item.f.id+'&sz=w100';
+      div.innerHTML='<img src="'+th+'" loading="lazy"><div class="fc-lbl">'+escH(item.f.name)+'</div><span class="fc-badge '+item.t+'">'+labels[item.t]+'</span>';
+    } else {
+      var icons = {vid:'▶',doc:'📄'};
+      div.innerHTML='<div class="fc-icon"><span style="font-size:20px;">'+icons[item.t]+'</span><span>'+escH(item.f.name)+'</span></div><span class="fc-badge '+item.t+'">'+labels[item.t]+'</span>';
+    }
+    grid.appendChild(div);
+  });
+}
+
+function renderAssetList(prods, facts, vids) {
+  var list = document.getElementById('asset-list'); list.innerHTML = '';
+  var total = prods.length + facts.length + vids.length;
+  setCC('assets-chip', total+' 个', total>0?'ok':'');
+
+  var allAssets = prods.map(function(f,i){return{f:f,type:'img',label:gv('f-sku')+'_'+(i+1<10?'0':'')+(i+1)+'.webp'};})
+    .concat(facts.map(function(f,i){return{f:f,type:'img',label:gv('f-sku')+'_factory_'+(i+1<10?'0':'')+(i+1)+'.webp'};}))
+    .concat(vids.map(function(f,i){return{f:f,type:'vid',label:'video_'+(i+1)+'.mp4'};}));
+
+  allAssets.forEach(function(item){
+    var div = document.createElement('div'); div.className='asset-item';
+    div.innerHTML='<div class="asset-icon '+(item.type==='vid'?'vid':'img')+'">'+(item.type==='vid'?'▶':'IMG')+'</div>'+
+      '<span class="asset-name">'+escH(item.label)+'</span>'+
+      '<span class="asset-status" id="ast-'+item.f.id+'">待下载</span>';
+    list.appendChild(div);
+  });
+  S._assetList = allAssets;
+}
+
+// ═══════════════ AI EXTRACTION ═══════════════
+async function extractFromDocs(docs) {
+  var aiKey = gv('cfg-aikey'); if (!aiKey) { setLog('未配置 AI Key，跳过字段提取', true); return; }
+  var text = '';
+  for (var i=0; i<docs.length; i++) {
+    var f = docs[i];
+    try {
+      var mime = f.mimeType==='application/vnd.google-apps.spreadsheet'?'text/csv':'text/plain';
+      var headers = {}; var kp='';
+      if (S.oauthToken) headers['Authorization']='Bearer '+S.oauthToken;
+      else kp = '&key='+gv('cfg-dkey');
+      var r = await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'/export?mimeType='+encodeURIComponent(mime)+kp,{headers:headers});
+      if (r.ok) { text = await r.text(); break; }
+    } catch(e) {}
+  }
+  if (!text) { setLog('无法读取文档内容（仅支持 Google Doc / Sheet）', true); return; }
+  setLog('AI 正在提取字段...', true);
+  var prompt = '从以下产品文档提取信息，返回 JSON，字段：title,subtitle,price,compare_price,sku,vendor,product_type,tags,seo_title,seo_description,production_days。没有的填空字符串，不要编造。\n\n'+text.slice(0,3000);
+  try {
+    var m = gv('cfg-aimodel')||'qwen';
+    var obj = m==='qwen' ? await callQwen(aiKey,prompt) : await callMinimax(aiKey,prompt);
+    if (obj) fillFromAI(obj);
+    setLog('AI 字段提取完成', true);
+  } catch(e) { setLog('AI 提取失败：'+e.message, true); }
+}
+async function callQwen(k,p) {
+  var r = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+    body:JSON.stringify({model:'qwen-turbo',messages:[{role:'user',content:p}],response_format:{type:'json_object'}})
+  });
+  var d = await r.json(); if(d.error)throw new Error(d.error.message);
+  return JSON.parse(d.choices[0].message.content);
+}
+async function callMinimax(k,p) {
+  var r = await fetch('https://api.minimax.chat/v1/text/chatcompletion_v2',{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+    body:JSON.stringify({model:'abab6.5s-chat',messages:[{role:'user',content:p}],response_format:{type:'json_object'}})
+  });
+  var d = await r.json();
+  if(d.base_resp&&d.base_resp.status_code!==0)throw new Error(d.base_resp.status_msg);
+  return JSON.parse(d.choices[0].message.content);
+}
+function fillFromAI(obj) {
+  var map={title:'f-title',subtitle:'f-subtitle',price:'f-price',compare_price:'f-compare',sku:'f-sku',vendor:'f-vendor',product_type:'f-type',tags:'f-tags',seo_title:'f-seo-title',seo_description:'f-seo-desc',production_days:'f-production'};
+  Object.keys(map).forEach(function(k){
+    if(obj[k]){var el=document.getElementById(map[k]);if(el){el.value=obj[k];el.classList.add('ai-filled');}}
+  });
+  toast('AI 已填充可识别字段','success');
+}
+
+// ═══════════════ IMAGE COMPRESS ═══════════════
+function compressImg(blob, cb) {
+  var url = URL.createObjectURL(blob);
+  var img = new Image();
+  img.onload = function() {
+    URL.revokeObjectURL(url);
+    var w=img.width, h=img.height, sq=Math.abs(w/h-1)<0.15;
+    var tw=sq?800:750, th=sq?800:1000;
+    var cv=document.createElement('canvas'); cv.width=tw; cv.height=th;
+    var cx=cv.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high';
+    var sr=w/h,tr=tw/th,sx,sy,sw,sh;
+    if(sr>tr){sh=h;sw=h*tr;sx=(w-sw)/2;sy=0;}else{sw=w;sh=w/tr;sx=0;sy=(h-sh)/2;}
+    cx.drawImage(img,sx,sy,sw,sh,0,0,tw,th);
+    tryComp(cv,0.92,150*1024,cb);
+  };
+  img.onerror = function() { cb(blob); }; // fallback
+  img.src = url;
+}
+function tryComp(cv,q,max,cb) {
+  cv.toBlob(function(b){
+    if(!b){cb(null);return;}
+    if(b.size<=max||q<=0.3){cb(b);return;}
+    tryComp(cv,q-0.07,max,cb);
+  },'image/webp',q);
+}
+
+// ═══════════════ DOWNLOAD FROM DRIVE ═══════════════
+async function downloadDriveFile(fileId) {
+  var headers = {};
+  var url = 'https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media';
+  if (S.oauthToken) headers['Authorization'] = 'Bearer '+S.oauthToken;
+  else url += '&key='+gv('cfg-dkey');
+  var r = await fetch(url, {headers:headers});
+  if (!r.ok) throw new Error('下载失败 '+r.status);
+  return await r.blob();
+}
+
+// ═══════════════ EXPORT ═══════════════
+async function doExport() {
+  var title = gv('f-title').trim();
+  var price = gv('f-price').trim();
+  var sku   = gv('f-sku').trim();
+  if (!title){toast('请填写产品标题','error');return;}
+  if (!price){toast('请填写价格','error');return;}
+  if (!sku)  {toast('请填写 SKU','error');return;}
+
+  var btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  document.getElementById('action-status').textContent = '正在生成...';
+
+  try {
+    var zip = new JSZip();
+
+    // ── 1. 下载并处理图片/视频 ──
+    var prods   = S.driveFiles.filter(function(f){return f._type==='prod';});
+    var facts   = S.driveFiles.filter(function(f){return f._type==='factory';});
+    var vids    = S.driveFiles.filter(function(f){return f._type==='video';});
+    var total   = prods.length + facts.length + vids.length;
+    var current = 0;
+
+    // 产品图
+    for (var i=0; i<prods.length; i++) {
+      var fname = sku+'_'+pad(i+1)+'.webp';
+      setDlProg(current, total, '下载产品图 '+(i+1)+'/'+prods.length);
+      setAssetStatus(prods[i].id, 'proc', '处理中');
+      try {
+        var blob = await downloadDriveFile(prods[i].id);
+        var compressed = await new Promise(function(res){ compressImg(blob, res); });
+        zip.file(fname, compressed||blob);
+        setAssetStatus(prods[i].id, 'done', fname);
+      } catch(e) { setAssetStatus(prods[i].id, 'err', '失败'); }
+      current++;
+    }
+
+    // 工厂图
+    for (var j=0; j<facts.length; j++) {
+      var ffname = sku+'_factory_'+pad(j+1)+'.webp';
+      setDlProg(current, total, '下载工厂图 '+(j+1)+'/'+facts.length);
+      setAssetStatus(facts[j].id, 'proc', '处理中');
+      try {
+        var fblob = await downloadDriveFile(facts[j].id);
+        var fcomp = await new Promise(function(res){ compressImg(fblob, res); });
+        zip.file(ffname, fcomp||fblob);
+        setAssetStatus(facts[j].id, 'done', ffname);
+      } catch(e) { setAssetStatus(facts[j].id, 'err', '失败'); }
+      current++;
+    }
+
+    // 视频
+    var safeTitle = title.replace(/[^\w\u4e00-\u9fa5\-\.]/g, '-').replace(/-+/g,'-').slice(0,80);
+    for (var k=0; k<vids.length; k++) {
+      var vfname = safeTitle+'_'+pad(k+1)+'.mp4';
+      setDlProg(current, total, '下载视频 '+(k+1)+'/'+vids.length);
+      setAssetStatus(vids[k].id, 'proc', '下载中');
+      try {
+        var vblob = await downloadDriveFile(vids[k].id);
+        zip.file(vfname, vblob);
+        setAssetStatus(vids[k].id, 'done', vfname);
+      } catch(e) { setAssetStatus(vids[k].id, 'err', '失败'); }
+      current++;
+    }
+
+    setDlProg(total, total, '生成文件...');
+
+    // ── 2. 生成 CSV ──
+    var csv = buildCSV(sku, title);
+    zip.file(sku+'_product.csv', csv);
+
+    // ── 3. 打包下载 ──
+    var zipBlob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
+    var zipUrl  = URL.createObjectURL(zipBlob);
+    var a = document.createElement('a'); a.href=zipUrl; a.download=sku+'_upload_package.zip'; a.click();
+    URL.revokeObjectURL(zipUrl);
+
+    setDlProg(0, 1, '');
+    document.getElementById('dl-prog-wrap').style.display='none';
+    toast('导出成功！','success');
+    document.getElementById('action-status').textContent = '导出完成 · '+sku+'_upload_package.zip';
+  } catch(e) {
+    toast('导出失败：'+e.message,'error');
+    document.getElementById('action-status').textContent = '导出失败';
+  }
+  btn.disabled = false;
+}
+
+function buildCSV(sku, title) {
+  var handle = title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  var wt     = gv('f-wunit');
+  var wval   = parseFloat(gv('f-weight')||'0');
+  var grams  = Math.round(wt==='kg'?wval*1000:wt==='lb'?wval*453.6:wval);
+
+  // Header - matches original export format exactly
+  var headers = [
+    'Handle','Title','Body (HTML)','Vendor','Product Category','Type','Tags','Published',
+    'Option1 Name','Option1 Value','Option1 Linked To','Option2 Name','Option2 Value','Option2 Linked To',
+    'Option3 Name','Option3 Value','Option3 Linked To',
+    'Variant SKU','Variant Grams','Variant Inventory Tracker','Variant Inventory Qty',
+    'Variant Inventory Policy','Variant Fulfillment Service','Variant Price','Variant Compare At Price',
+    'Variant Requires Shipping','Variant Taxable',
+    'Unit Price Total Measure','Unit Price Total Measure Unit','Unit Price Base Measure','Unit Price Base Measure Unit',
+    'Variant Barcode','Image Src','Image Position','Image Alt Text','Gift Card',
+    'SEO Title','SEO Description',
+    'Google Shopping / Google Product Category','Google Shopping / Gender','Google Shopping / Age Group',
+    'Google Shopping / MPN','Google Shopping / Condition','Google Shopping / Custom Product',
+    'Google Shopping / Custom Label 0','Google Shopping / Custom Label 1','Google Shopping / Custom Label 2',
+    'Google Shopping / Custom Label 3','Google Shopping / Custom Label 4',
+    'production_days (product.metafields.custom.production_days)',
+    '运输重量（含包装） (product.metafields.custom.shipping_weight)',
+    '产品副标题 (product.metafields.custom.subtitle)',
+    'source (product.metafields.custom._source)',
+    'Countdown (product.metafields.c_f.countdown)',
+    'Product-size (product.metafields.c_f.customtabsize)',
+    'Factory Photos (product.metafields.c_f.factoryphotos)',
+    'Google: Custom Product (product.metafields.mm-google-shopping.custom_product)',
+    '产品评分计数 (product.metafields.reviews.rating_count)',
+    '年龄段 (product.metafields.shopify.age-group)',
+    '颜色 (product.metafields.shopify.color-pattern)',
+    '玩偶类型 (product.metafields.shopify.doll-type)',
+    '乐器附配件材质 (product.metafields.shopify.instrument-accessory-material)',
+    '领口 (product.metafields.shopify.neckline)',
+    '推荐年龄段 (product.metafields.shopify.recommended-age-group)',
+    '袖长类型 (product.metafields.shopify.sleeve-length-type)',
+    '目标性别 (product.metafields.shopify.target-gender)',
+    '顶部长度类型 (product.metafields.shopify.top-length-type)',
+    '玩具/游戏材料 (product.metafields.shopify.toy-game-material)',
+    'Variant Image','Variant Weight Unit','Variant Tax Code','Cost per item','Status'
+  ];
+
+  var row = [];
+  headers.forEach(function(h){ row.push(''); }); // init empty
+
+  function setCol(name, val) {
+    var idx = headers.indexOf(name);
+    if (idx >= 0) row[idx] = val||'';
+  }
+
+  setCol('Handle',                  handle);
+  setCol('Title',                   title);
+  setCol('Body (HTML)',              '');
+  setCol('Vendor',                  gv('f-vendor'));
+  setCol('Type',                    gv('f-type'));
+  setCol('Tags',                    gv('f-tags'));
+  setCol('Published',               gv('f-status'));
+  setCol('Option1 Name',            'Title');
+  setCol('Option1 Value',           'Default Title');
+  setCol('Variant SKU',             sku);
+  setCol('Variant Grams',           String(grams));
+  setCol('Variant Inventory Tracker','shopify');
+  setCol('Variant Inventory Qty',   gv('f-inventory')||'0');
+  setCol('Variant Inventory Policy',gv('f-inv-policy'));
+  setCol('Variant Fulfillment Service','manual');
+  setCol('Variant Price',           gv('f-price'));
+  setCol('Variant Compare At Price',gv('f-compare'));
+  setCol('Variant Requires Shipping','true');
+  setCol('Variant Taxable',         'true');
+  setCol('Gift Card',               'false');
+  setCol('SEO Title',               gv('f-seo-title'));
+  setCol('SEO Description',         gv('f-seo-desc'));
+  setCol('production_days (product.metafields.custom.production_days)', gv('f-production'));
+  setCol('运输重量（含包装） (product.metafields.custom.shipping_weight)', gv('f-weight')+(gv('f-wunit')?'kg':''));
+  setCol('产品副标题 (product.metafields.custom.subtitle)', gv('f-subtitle'));
+  setCol('Variant Weight Unit',     'kg');
+  setCol('Cost per item',           gv('f-cost'));
+  setCol('Status',                  gv('f-status')==='true'?'active':'draft');
+
+  var csvRows = [headers.map(csvCell).join(','), row.map(csvCell).join(',')];
+  return '\uFEFF' + csvRows.join('\r\n'); // BOM for Excel
+}
+
+function csvCell(v) {
+  v = String(v||'');
+  if (v.includes('"')||v.includes(',')||v.includes('\n')||v.includes('\r')) {
+    return '"' + v.replace(/"/g,'""') + '"';
+  }
+  return v;
+}
+
+// ═══════════════ UTILS ═══════════════
+function pad(n){ return n<10?'0'+n:String(n); }
+function setLog(msg,show){var el=document.getElementById('parse-log');el.textContent=msg;el.className='parse-log'+(show?' show':'');}
+function setCC(id,lbl,type){var el=document.getElementById(id);if(!el)return;el.textContent=lbl;el.className='cchip'+(type?' '+type:'');}
+function setAssetStatus(fid, cls, txt) {
+  var el = document.getElementById('ast-'+fid); if(!el)return;
+  el.className='asset-status '+cls; el.textContent=txt;
+}
+function setDlProg(cur, total, lbl) {
+  var wrap = document.getElementById('dl-prog-wrap');
+  wrap.style.display = '';
+  document.getElementById('dl-prog-fill').style.width = (total>0?Math.round(cur/total*100):0)+'%';
+  document.getElementById('dl-prog-lbl').textContent = lbl;
+}
+function cntSeo(el,hid,max){var l=el.value.length,h=document.getElementById(hid);h.textContent=l+' / '+max;h.className='fhint '+(l>max?'err':l>max*0.7?'ok':'');}
+function escH(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toast(msg,type){var w=document.getElementById('toast-wrap'),div=document.createElement('div');div.className='toast '+(type||'info');div.textContent=msg;w.appendChild(div);setTimeout(function(){div.remove();},3500);}
+function clearAll(){
+  if(!confirm('确认清空？'))return;
+  ['f-title','f-subtitle','f-price','f-compare','f-cost','f-sku','f-inventory','f-production','f-vendor','f-type','f-tags','f-weight','f-seo-title','f-seo-desc'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  S.driveFiles=[];
+  document.getElementById('file-grid-wrap').style.display='none';
+  document.getElementById('file-grid').innerHTML='';
+  document.getElementById('assets-card').style.display='none';
+  document.getElementById('asset-list').innerHTML='';
+  document.getElementById('oauth-nudge').classList.remove('show');
+  setCC('parse-chip','待解析',''); setLog('',false);
+  document.querySelectorAll('.ai-filled').forEach(function(el){el.classList.remove('ai-filled');});
+  document.getElementById('action-status').textContent='解析 Drive 文件夹，填写产品信息，然后导出';
+}
+
+// Drive 解析入口 - 等所有文件收集完再处理
+var _origDoFetch = doFetch;
+async function parseDrive() {
+  var url = gv('drive-url').trim();
+  if (!url) { toast('请输入 Google Drive 文件夹链接','error'); return; }
+  var fid = extractFid(url);
+  if (!fid) { toast('无法识别文件夹 ID','error'); return; }
+  setLog('正在递归读取文件夹（含子文件夹）...', true);
+  setCC('parse-chip','解析中','');
+  document.getElementById('parse-btn').disabled = true;
+  document.getElementById('oauth-nudge').classList.remove('show');
+  S.driveFiles = [];
+  await doFetch(fid, null);
+  // 只有顶层调用完后才渲染
+  if (S.driveFiles.length > 0 || document.getElementById('parse-chip').textContent !== '解析中') {
+    await processFiles();
+  }
+  document.getElementById('parse-btn').disabled = false;
+}
+</script>
+</body>
+</html>
