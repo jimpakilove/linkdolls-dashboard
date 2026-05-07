@@ -33,10 +33,22 @@ body {
   background: var(--gray-100);
   color: var(--gray-800);
   line-height: 1.5;
+  display: flex;
 }
+.sidebar { width:220px; background:#1e293b; color:white; flex-shrink:0; position:fixed; top:0; left:0; bottom:0; z-index:100; display:flex; flex-direction:column; }
+.sidebar-logo { padding:24px 20px 20px; font-size:18px; font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }
+.sidebar-logo span { color:#60a5fa; }
+.sidebar-nav { padding:12px 0; flex:1; }
+.nav-section { padding:12px 20px 4px; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#64748b; font-weight:600; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:10px 20px; cursor:pointer; color:#94a3b8; font-size:14px; transition:all 0.15s; border-left:3px solid transparent; text-decoration:none; }
+.nav-item:hover { background:rgba(255,255,255,0.05); color:#e2e8f0; }
+.nav-item.active { background:rgba(59,130,246,0.15); color:#93c5fd; border-left-color:#3b82f6; font-weight:600; }
+.nav-icon { font-size:18px; width:24px; text-align:center; }
+.sidebar-footer { padding:16px 20px; font-size:11px; color:#475569; border-top:1px solid rgba(255,255,255,0.1); }
 
 /* 容器 */
 .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+.main-content { margin-left:220px; flex:1; min-width:0; }
 
 /* 头部 */
 .header {
@@ -45,6 +57,14 @@ body {
   padding: 20px 24px;
   margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  transition: box-shadow 0.2s, border-radius 0.2s;
+}
+.header.is-stuck {
+  border-radius: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
 }
 .header-top {
   display: flex;
@@ -513,6 +533,19 @@ body {
 </head>
 <body>
 
+<div class="sidebar">
+<div class="sidebar-logo"><span>LinkDolls</span> 看板</div>
+<div class="sidebar-nav">
+<div class="nav-section">详情页 PDP</div>
+<a class="nav-item" href="dashboard.html" style="text-decoration:none;"><span class="nav-icon">📊</span><span>Top 300 趋势</span></a>
+<a class="nav-item" href="dashboard.html#category" style="text-decoration:none;"><span class="nav-icon">📋</span><span>类别横向对比</span></a>
+<div class="nav-section">分类页</div>
+<div class="nav-item active"><span class="nav-icon">📈</span><span>分类页数据看板</span></div>
+</div>
+<div class="sidebar-footer">W10–W18 数据</div>
+</div>
+
+<div class="main-content">
 <div class="container">
 
 <!-- 头部 -->
@@ -1350,6 +1383,21 @@ function setQuarter(q, btn) {
 
 /* 启动 */
 loadData();
+
+/* Sticky header shadow */
+(function() {
+  var header = document.querySelector('.header');
+  if (!header) return;
+  var sentinel = document.createElement('div');
+  sentinel.style.cssText = 'height:0;overflow:hidden;';
+  header.parentNode.insertBefore(sentinel, header);
+  var observer = new IntersectionObserver(function(entries) {
+    header.classList.toggle('is-stuck', !entries[0].isIntersecting);
+  }, { threshold: 0 });
+  observer.observe(sentinel);
+})();
 </script>
+</div>
+</div>
 </body>
 </html>
