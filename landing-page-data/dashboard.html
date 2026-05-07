@@ -63,6 +63,18 @@ body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica
             margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
+        .header.sticky-active {
+            position: fixed;
+            top: 0;
+            left: 220px;
+            right: 0;
+            z-index: 50;
+            border-radius: 0;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+        }
+        .header.sticky-placeholder {
+            visibility: hidden;
+        }
 
         .header-title {
             font-size: 28px;
@@ -1137,6 +1149,56 @@ const data = window.__EMBEDDED_DATA__;
     document.getElementById('catWeekSelector').addEventListener('change',function(){csw=this.value==='all'?-1:parseInt(this.value);render();});
     document.getElementById('catSortSelector').addEventListener('change',render);
     render();
+})();
+
+/* Sticky header via scroll listener */
+(function() {
+  document.querySelectorAll('.header').forEach(function(header) {
+    var placeholder = null;
+    var isStuck = false;
+    var offsetTop = 0;
+
+    function calcOffset() {
+      offsetTop = header.offsetTop;
+    }
+
+    function onScroll() {
+      var page = header.closest('.page');
+      if (!page || !page.classList.contains('active')) return;
+      var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+      if (scrollY >= offsetTop) {
+        if (!isStuck) {
+          isStuck = true;
+          if (!placeholder) {
+            placeholder = document.createElement('div');
+            placeholder.className = 'header sticky-placeholder';
+            placeholder.style.height = header.offsetHeight + 'px';
+            header.parentNode.insertBefore(placeholder, header);
+          }
+          placeholder.style.display = '';
+          header.classList.add('sticky-active');
+        }
+      } else {
+        if (isStuck) {
+          isStuck = false;
+          header.classList.remove('sticky-active');
+          if (placeholder) placeholder.style.display = 'none';
+        }
+      }
+    }
+
+    calcOffset();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        isStuck = false;
+        header.classList.remove('sticky-active');
+        if (placeholder) placeholder.style.display = 'none';
+        setTimeout(calcOffset, 50);
+        setTimeout(onScroll, 100);
+      });
+    });
+  });
 })();
 
 </script>
