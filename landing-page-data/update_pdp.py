@@ -12,7 +12,7 @@ PDP 看板数据更新脚本
 
 import csv, json, re, glob, os, sys
 from collections import defaultdict
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher  # noqa: F401 – kept for compatibility
 
 # ── 配置 ──
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -284,15 +284,7 @@ def step3_match_orders(products, needed):
         code = extract_code(order_title)
         if not code: return None
         cands = code_to_names.get(code, [])
-        if len(cands) == 1: return cands[0]
-        if len(cands) > 1:
-            ot = order_title.lower().strip()[:80]
-            best, best_r = None, 0
-            for c in cands:
-                r = SequenceMatcher(None, ot, c.lower()[:80]).ratio()
-                if r > best_r: best, best_r = c, r
-            return best
-        return None
+        return cands[0] if cands else None
 
     with open(orders_file, 'r', encoding='utf-8-sig') as f:
         raw_rows = list(csv.DictReader(f))
@@ -340,8 +332,90 @@ def step3_match_orders(products, needed):
     print(f"  ✓ {matched} 个产品匹配到订单收入")
 
 
-def step4_save_json(products, all_sorted, cat_products, needed, active_categories, prefixBench):
-    """步骤4: 保存 JSON 数据文件"""
+def step3b_category_revenue(orders_file, week_starts=None, week_end=None,
+                             n_weeks=None, skip_kw=None, cat_names=None):
+    """步骤3b: 直接按产品首字母从订单 CSV 汇总分类收入（不依赖产品匹配）。
+
+    参数默认从模块全局变量读取，可通过关键字参数覆盖（便于测试）。
+
+    返回:
+        dict[cat_key] → {
+            'weeklyRevenue': [float, ...],   # 每周净销售额
+            'weeklyOrders':  [int,   ...],   # 每周订单数（去重）
+            'totalRevenue':  float,
+            'totalOrders':   int,
+        }
+    """
+    _week_starts = week_starts if week_starts is not None else WEEK_STARTS
+    _week_end    = week_end    if week_end    is not None else WEEK_END
+    _n_weeks     = n_weeks     if n_weeks     is not None else len(WEEKS)
+    _skip_kw     = skip_kw     if skip_kw     is not None else SKIP_ORDER_KW
+    _cat_names   = cat_names   if cat_names   is not None else CAT_NAMES
+
+    def _date_to_week(d):
+        if d < _week_starts[0] or d >= _week_end:
+            return -1
+        for i in range(len(_week_starts) - 1, -1, -1):
+            if d >= _week_starts[i]:
+                return i
+        return -1
+
+    result = {}
+    for cat in list(_cat_names.keys()):
+        result[cat] = {
+            'weeklyRevenue': [0.0] * _n_weeks,
+            'weeklyOrders':  [0]   * _n_weeks,
+            'totalRevenue':  0.0,
+            'totalOrders':   0,
+        }
+
+    seen = set()
+    with open(orders_file, 'r', encoding='utf-8-sig') as f:
+        for r in csv.DictReader(f):
+            title = r.get('产品标题', '').strip()
+            if not title:
+                continue
+            if any(kw in title.lower() for kw in _skip_kw):
+                continue
+
+            # 去重：同一订单+产品+日期+金额只算一次
+            day = r.get('天', '').strip()
+            net_str = r.get('净销售额', '0').strip().replace(',', '')
+            key = (r.get('订单名称', ''), title, day, net_str)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            wi = _date_to_week(day)
+            if wi < 0:
+                continue
+
+            try:
+                net = float(net_str)
+            except ValueError:
+                continue
+
+            # 按首字母归分类
+            first = title[0].lower()
+            cat = first if first in _cat_names else 'other'
+
+            result[cat]['weeklyRevenue'][wi] += net
+            result[cat]['weeklyOrders'][wi]  += 1
+
+    # 汇总合计
+    for cat in result:
+        result[cat]['weeklyRevenue'] = [round(v, 2) for v in result[cat]['weeklyRevenue']]
+        result[cat]['totalRevenue']  = round(sum(result[cat]['weeklyRevenue']), 2)
+        result[cat]['totalOrders']   = sum(result[cat]['weeklyOrders'])
+
+    return result
+
+
+def step4_save_json(products, all_sorted, cat_products, needed, active_categories, prefixBench,
+                    cat_revenue=None):
+    """步骤4: 保存 JSON 数据文件。
+    cat_revenue: step3b_category_revenue() 的返回值，用于覆盖分类级收入数据。
+    """
     print("💾 保存数据文件...")
     n_weeks = len(WEEKS)
 
@@ -411,13 +485,22 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
             'totalViews': sum(p['totalViews'] for p in prods),
             'totalUsers': sum(p['totalUsers'] for p in prods),
             'totalCarts': sum(p['totalCarts'] for p in prods),
-            'totalOrders': sum(p.get('orderCount', 0) for p in prods),
-            'totalRevenue': round(sum(p.get('revenue', 0) for p in prods), 2),
+            # 收入/订单数：优先用 step3b 按首字母直接汇总的数据，产品级加总仅作回退
+            'totalOrders': (cat_revenue[cat]['totalOrders']
+                            if cat_revenue and cat in cat_revenue
+                            else sum(p.get('orderCount', 0) for p in prods)),
+            'totalRevenue': (cat_revenue[cat]['totalRevenue']
+                             if cat_revenue and cat in cat_revenue
+                             else round(sum(p.get('revenue', 0) for p in prods), 2)),
             'weeklyViews': [sum(p['weeklyViews'][i] for p in prods) for i in range(n_weeks)],
             'weeklyUsers': [sum(p['weeklyUsers'][i] for p in prods) for i in range(n_weeks)],
             'weeklyCarts': [sum(p['weeklyCarts'][i] for p in prods) for i in range(n_weeks)],
-            'weeklyOrders': [sum(p.get('weeklyOrderCount', [0] * n_weeks)[i] for p in prods) for i in range(n_weeks)],
-            'weeklyRevenue': [round(sum(p.get('weeklyRevenue', [0] * n_weeks)[i] for p in prods), 2) for i in range(n_weeks)],
+            'weeklyOrders': (cat_revenue[cat]['weeklyOrders']
+                             if cat_revenue and cat in cat_revenue
+                             else [sum(p.get('weeklyOrderCount', [0] * n_weeks)[i] for p in prods) for i in range(n_weeks)]),
+            'weeklyRevenue': (cat_revenue[cat]['weeklyRevenue']
+                              if cat_revenue and cat in cat_revenue
+                              else [round(sum(p.get('weeklyRevenue', [0] * n_weeks)[i] for p in prods), 2) for i in range(n_weeks)]),
         }
         tv = c['totalViews']
         c['avgBounce'] = round(sum(p['bounceRate'] * p['totalViews'] for p in prods if p['totalViews'] > 0) / tv, 1) if tv > 0 else 0
@@ -432,6 +515,7 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
 
     cat_data = {
         'weeks': WEEK_NAMES,
+        'weekStarts': WEEK_STARTS,
         'categories': cat_output,
         'allWeeklyViews': all_wv,
         'allWeeklyRevenue': all_wr,
@@ -529,7 +613,7 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         # Sidebar
         out.write('<div class="sidebar">\n<div class="sidebar-logo"><span>LinkDolls</span> 看板</div>\n<div class="sidebar-nav">\n')
         out.write('<div class="nav-section">详情页 PDP</div>\n')
-        out.write('<div class="nav-item active" data-page="top50"><span class="nav-icon">📊</span><span>Top 50 趋势</span></div>\n')
+        out.write('<div class="nav-item active" data-page="top50"><span class="nav-icon">📊</span><span>Top 300 趋势</span></div>\n')
         out.write('<div class="nav-item" data-page="category"><span class="nav-icon">📋</span><span>类别横向对比</span></div>\n')
         out.write('<div class="nav-section">分类页</div>\n')
         out.write('<a class="nav-item" href="dashboard_collection.html" style="text-decoration:none;"><span class="nav-icon">📈</span><span>分类页数据看板</span></a>\n')
@@ -543,7 +627,9 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write('<div class="page" id="page-category">\n')
         out.write('<div class="container"><div class="header"><div class="header-title">产品类别横向对比</div>')
         out.write('<div class="header-subtitle">W10–W16 · 按产品首字母分类对比核心指标</div></div>\n')
-        out.write('<div class="cat-filters"><div><div class="cat-filter-label">查看周</div>')
+        out.write('<div class="cat-filters"><div><div class="cat-filter-label">时间颗粒度</div>')
+        out.write('<select class="filter-select" id="catGranularitySelector" style="font-weight:700;color:#2563eb;"><option value="week">自然周</option><option value="4week">4周周期</option></select></div>\n')
+        out.write('<div><div class="cat-filter-label">查看周期</div>')
         out.write('<select class="filter-select" id="catWeekSelector" style="font-weight:700;color:#2563eb;"><option value="all">全部 7 周汇总</option></select></div>\n')
         out.write('<div><div class="cat-filter-label">排序</div><select class="filter-select" id="catSortSelector">')
         out.write('<option value="views">按浏览量</option><option value="revenue">按收入</option>')
@@ -564,6 +650,7 @@ def step5_rebuild_dashboard(top50_output, cat_data):
         out.write('<script>\n')
         out.write("document.querySelectorAll('.nav-item').forEach(function(item) {\n")
         out.write("  item.addEventListener('click', function() {\n")
+        out.write("    if (!item.dataset.page) return;\n")
         out.write("    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });\n")
         out.write("    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });\n")
         out.write("    item.classList.add('active');\n")
@@ -585,42 +672,143 @@ def step5_rebuild_dashboard(top50_output, cat_data):
 
 
 def _build_category_js():
-    """生成类别对比页面的 JS"""
+    """生成类别对比页面的 JS（支持周/4周双时间颗粒度）"""
     return r"""
 (function() {
     var cd = window.__CAT_DATA__;
     var catColors = {'f':'#dc2626','a':'#ea580c','t':'#d97706','h':'#0891b2','p':'#7c3aed','v':'#65a30d','l':'#16a34a','b':'#ec4899','m':'#059669','d':'#0284c7','other':'#6b7280'};
+    var granularity = 'week'; // 'week' or '4week'
     var csw = -1;
-    (function() {
-        var sel = document.getElementById('catWeekSelector');
-        cd.weeks.forEach(function(w,i) {
-            var o = document.createElement('option');
-            o.value = i; o.textContent = w + (i===cd.weeks.length-1?' (最新)':'');
-            sel.appendChild(o);
+
+    // Build 4-week periods from weekStarts
+    var periods4w = [];
+    if (cd.weekStarts) {
+        var ws = cd.weekStarts;
+        for (var i = 0; i < cd.weeks.length; i += 4) {
+            var endIdx = Math.min(i + 3, cd.weeks.length - 1);
+            var sDate = ws[i].replace(/^\d{4}-/, '').replace(/-/g, '/');
+            var eDate = ws[endIdx].replace(/^\d{4}-/, '').replace(/-/g, '/');
+            // end date = start of last week + 6 days
+            var eParts = ws[endIdx].split('-');
+            var eDt = new Date(parseInt(eParts[0]), parseInt(eParts[1])-1, parseInt(eParts[2]));
+            eDt.setDate(eDt.getDate() + 6);
+            eDate = (eDt.getMonth()+1) + '/' + eDt.getDate();
+            var weekCount = endIdx - i + 1;
+            var isFull = weekCount === 4;
+            var label = cd.weeks[i] + '–' + cd.weeks[endIdx] + ' · ' + sDate + '–' + eDate;
+            if (!isFull) label += ' (不足4周)';
+            periods4w.push({ label: label, startIdx: i, endIdx: endIdx, weekCount: weekCount, isFull: isFull });
+        }
+    }
+
+    // Aggregate category data for a set of week indices
+    function aggWeeks(c, indices) {
+        var vi=0,us=0,ca=0,od=0,rv=0,boSum=0,boW=0;
+        indices.forEach(function(i){
+            vi += c.weeklyViews[i]||0;
+            us += c.weeklyUsers[i]||0;
+            ca += c.weeklyCarts[i]||0;
+            od += c.weeklyOrders[i]||0;
+            rv += c.weeklyRevenue[i]||0;
+            var bw = c.weeklyViews[i]||0;
+            if(bw>0){boSum += (c.weeklyBounce[i]||0)*bw; boW += bw;}
         });
-    })();
+        return {vi:vi,us:us,ca:ca,od:od,rv:rv,bo:boW>0?boSum/boW:0};
+    }
+
+    function populateSelector() {
+        var sel = document.getElementById('catWeekSelector');
+        sel.innerHTML = '';
+        if (granularity === 'week') {
+            var oAll = document.createElement('option');
+            oAll.value = 'all'; oAll.textContent = '全部 ' + cd.weeks.length + ' 周汇总';
+            sel.appendChild(oAll);
+            cd.weeks.forEach(function(w, i) {
+                var o = document.createElement('option');
+                o.value = i; o.textContent = w + (i === cd.weeks.length - 1 ? ' (最新)' : '');
+                sel.appendChild(o);
+            });
+        } else {
+            var oAll = document.createElement('option');
+            oAll.value = 'all'; oAll.textContent = '全部周期汇总';
+            sel.appendChild(oAll);
+            periods4w.forEach(function(p, i) {
+                var o = document.createElement('option');
+                o.value = i; o.textContent = p.label + (i === periods4w.length - 1 ? ' (最新)' : '');
+                sel.appendChild(o);
+            });
+        }
+        csw = -1;
+        sel.value = 'all';
+    }
+
     function fm(v) { return '$'+v.toLocaleString('en-US',{maximumFractionDigits:0}); }
-    function fe(s) { return Math.floor(s/60)+'m '+Math.floor(s%60)+'s'; }
     function spark(cv,vals,color) {
         var ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
         if(!vals||!vals.length)return;
         var mx=Math.max.apply(null,vals.concat([1]));
         ctx.fillStyle='#f0f0f0';ctx.fillRect(0,0,W,H);
         ctx.strokeStyle=color;ctx.lineWidth=2;ctx.globalAlpha=0.8;ctx.beginPath();
-        vals.forEach(function(v,i){var x=i/(vals.length-1)*(W-8)+4,y=H-4-(v/mx)*(H-8);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
-        ctx.stroke();var lx=W-4,ly=H-4-(vals[vals.length-1]/mx)*(H-8);
+        vals.forEach(function(v,i){var x=vals.length===1?W/2:i/(vals.length-1)*(W-8)+4,y=H-4-(v/mx)*(H-8);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+        ctx.stroke();var lx=vals.length===1?W/2:W-4,ly=H-4-(vals[vals.length-1]/mx)*(H-8);
         ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fillStyle=color;ctx.globalAlpha=1;ctx.fill();
     }
+
     function render() {
-        var w=csw,isAll=w===-1,label=isAll?'7 周汇总':cd.weeks[w];
-        document.getElementById('catTableTitle').textContent='类别横向对比 · '+label;
-        document.getElementById('catTableHead').innerHTML='<th>类别</th><th>名称</th><th>产品数</th><th>浏览量</th><th>浏览占比</th><th>7周走势</th><th>活跃用户</th><th>人均浏览</th><th>环比</th><th>加购数</th><th>加购率</th><th>订单数</th><th>转化率</th><th>收入</th><th>收入占比</th><th>跳出率</th>';
-        var rows=cd.categories.map(function(c){
-            var vi,us,ca,od,rv,bo,wow;
-            if(isAll){vi=c.totalViews;us=c.totalUsers;ca=c.totalCarts;od=c.totalOrders;rv=c.totalRevenue;bo=c.avgBounce;var v6=c.weeklyViews[6],v5=c.weeklyViews[5];wow=v5>0?((v6-v5)/v5*100).toFixed(1):'—';}
-            else{vi=c.weeklyViews[w];us=c.weeklyUsers[w];ca=c.weeklyCarts[w];od=c.weeklyOrders[w];rv=c.weeklyRevenue[w];bo=c.weeklyBounce[w];wow=(w>0&&c.weeklyViews[w-1]>0)?((vi-c.weeklyViews[w-1])/c.weeklyViews[w-1]*100).toFixed(1):'—';}
-            return Object.assign({},c,{vi:vi,us:us,ca:ca,od:od,rv:rv,bo:bo,wow:wow,cr:vi>0?(ca/vi*100).toFixed(2):'0',cv:vi>0?(od/vi*100).toFixed(3):'0',av:c.productCount>0?(vi/c.productCount).toFixed(1):'0'});
-        });
+        var isAll = csw === -1;
+        var label, trendLabel, sparkData, rows;
+
+        if (granularity === 'week') {
+            label = isAll ? (cd.weeks.length + ' 周汇总') : cd.weeks[csw];
+            trendLabel = cd.weeks.length + '周走势';
+            document.getElementById('catTableTitle').textContent = '类别横向对比 · ' + label;
+            document.getElementById('catTableHead').innerHTML = '<th>类别</th><th>名称</th><th>产品数</th><th>浏览量</th><th>浏览占比</th><th>'+trendLabel+'</th><th>活跃用户</th><th>人均浏览</th><th>环比</th><th>加购数</th><th>加购率</th><th>订单数</th><th>转化率</th><th>收入</th><th>收入占比</th><th>跳出率</th>';
+            rows = cd.categories.map(function(c) {
+                var vi,us,ca,od,rv,bo,wow;
+                if(isAll){vi=c.totalViews;us=c.totalUsers;ca=c.totalCarts;od=c.totalOrders;rv=c.totalRevenue;bo=c.avgBounce;var v6=c.weeklyViews[cd.weeks.length-1],v5=c.weeklyViews[cd.weeks.length-2];wow=v5>0?((v6-v5)/v5*100).toFixed(1):'—';}
+                else{vi=c.weeklyViews[csw];us=c.weeklyUsers[csw];ca=c.weeklyCarts[csw];od=c.weeklyOrders[csw];rv=c.weeklyRevenue[csw];bo=c.weeklyBounce[csw];wow=(csw>0&&c.weeklyViews[csw-1]>0)?((vi-c.weeklyViews[csw-1])/c.weeklyViews[csw-1]*100).toFixed(1):'—';}
+                return Object.assign({},c,{vi:vi,us:us,ca:ca,od:od,rv:rv,bo:bo,wow:wow,cr:vi>0?(ca/vi*100).toFixed(2):'0',cv:vi>0?(od/vi*100).toFixed(3):'0',av:c.productCount>0?(vi/c.productCount).toFixed(1):'0',sparkVals:c.weeklyViews});
+            });
+        } else {
+            // 4-week mode
+            if (isAll) {
+                label = '全部周期汇总';
+                trendLabel = periods4w.length + '周期走势';
+                document.getElementById('catTableTitle').textContent = '类别横向对比 · ' + label;
+                document.getElementById('catTableHead').innerHTML = '<th>类别</th><th>名称</th><th>产品数</th><th>浏览量</th><th>浏览占比</th><th>'+trendLabel+'</th><th>活跃用户</th><th>人均浏览</th><th>环比</th><th>加购数</th><th>加购率</th><th>订单数</th><th>转化率</th><th>收入</th><th>收入占比</th><th>跳出率</th>';
+                rows = cd.categories.map(function(c) {
+                    var totals = {vi:0,us:0,ca:0,od:0,rv:0,bo:0,boW:0};
+                    var pSpark = [];
+                    periods4w.forEach(function(p) {
+                        var a = aggWeeks(c, function(){var a=[];for(var j=p.startIdx;j<=p.endIdx;j++)a.push(j);return a}());
+                        totals.vi+=a.vi; totals.us+=a.us; totals.ca+=a.ca; totals.od+=a.od; totals.rv+=a.rv;
+                        totals.boSum=(totals.boSum||0)+a.bo*a.vi; totals.boW=(totals.boW||0)+a.vi;
+                        pSpark.push(a.vi);
+                    });
+                    var lastP = pSpark[pSpark.length-1], prevP = pSpark.length>1?pSpark[pSpark.length-2]:0;
+                    var wow = prevP>0?((lastP-prevP)/prevP*100).toFixed(1):'—';
+                    return Object.assign({},c,{vi:totals.vi,us:totals.us,ca:totals.ca,od:totals.od,rv:totals.rv,bo:totals.boW>0?totals.boSum/totals.boW:0,wow:wow,cr:totals.vi>0?(totals.ca/totals.vi*100).toFixed(2):'0',cv:totals.vi>0?(totals.od/totals.vi*100).toFixed(3):'0',av:c.productCount>0?(totals.vi/c.productCount).toFixed(1):'0',sparkVals:pSpark});
+                });
+            } else {
+                var p = periods4w[csw];
+                label = p.label;
+                trendLabel = periods4w.length + '周期走势';
+                document.getElementById('catTableTitle').textContent = '类别横向对比 · ' + label;
+                document.getElementById('catTableHead').innerHTML = '<th>类别</th><th>名称</th><th>产品数</th><th>浏览量</th><th>浏览占比</th><th>'+trendLabel+'</th><th>活跃用户</th><th>人均浏览</th><th>环比</th><th>加购数</th><th>加购率</th><th>订单数</th><th>转化率</th><th>收入</th><th>收入占比</th><th>跳出率</th>';
+                var indices = []; for(var j=p.startIdx;j<=p.endIdx;j++) indices.push(j);
+                rows = cd.categories.map(function(c) {
+                    var a = aggWeeks(c, indices);
+                    var sparkVals = [];
+                    periods4w.forEach(function(pp) {
+                        var ii=[];for(var k=pp.startIdx;k<=pp.endIdx;k++)ii.push(k);
+                        sparkVals.push(aggWeeks(c,ii).vi);
+                    });
+                    var wow = csw>0 ? (function(){var pp=periods4w[csw-1];var ii=[];for(var k=pp.startIdx;k<=pp.endIdx;k++)ii.push(k);var prev=aggWeeks(c,ii);return prev.vi>0?((a.vi-prev.vi)/prev.vi*100).toFixed(1):'—';})() : '—';
+                    return Object.assign({},c,{vi:a.vi,us:a.us,ca:a.ca,od:a.od,rv:a.rv,bo:a.bo,wow:wow,cr:a.vi>0?(a.ca/a.vi*100).toFixed(2):'0',cv:a.vi>0?(a.od/a.vi*100).toFixed(3):'0',av:c.productCount>0?(a.vi/c.productCount).toFixed(1):'0',sparkVals:sparkVals});
+                });
+            }
+        }
+
         var sb=document.getElementById('catSortSelector').value;
         var sf={views:function(a,b){return b.vi-a.vi},revenue:function(a,b){return b.rv-a.rv},cartRate:function(a,b){return parseFloat(b.cr)-parseFloat(a.cr)},convRate:function(a,b){return parseFloat(b.cv)-parseFloat(a.cv)},avgViews:function(a,b){return parseFloat(b.av)-parseFloat(a.av)},count:function(a,b){return b.productCount-a.productCount}};
         rows.sort(sf[sb]||sf.views);
@@ -632,7 +820,7 @@ def _build_category_js():
             var wc=r.wow!=='—'?(parseFloat(r.wow)>=0?'wow-positive':'wow-negative'):'';
             var wt=r.wow!=='—'?(parseFloat(r.wow)>0?'+'+r.wow+'%':r.wow+'%'):'—';
             var tr2=document.createElement('tr');
-            tr2.innerHTML='<td><span class="cat-badge" style="background:'+co+'">'+(r.key==='other'?'?':r.key.toUpperCase())+'</span></td><td class="cat-name-col">'+r.name+'</td><td>'+r.productCount.toLocaleString()+'</td><td style="font-weight:700">'+r.vi.toLocaleString()+'</td><td class="bar-cell"><span>'+vp+'%</span><div class="bar-bg"><div class="bar-fill" style="width:'+vp+'%;background:'+co+';"></div></div></td><td><canvas class="cat-sparkline" data-v=\''+JSON.stringify(r.weeklyViews)+'\' data-c=\''+co+'\'></canvas></td><td>'+r.us.toLocaleString()+'</td><td>'+r.av+'</td><td><span class="'+wc+'">'+wt+'</span></td><td>'+r.ca+'</td><td>'+r.cr+'%</td><td>'+r.od+'</td><td>'+r.cv+'%</td><td style="font-weight:600">'+fm(r.rv)+'</td><td class="bar-cell"><span>'+rp+'%</span><div class="bar-bg"><div class="bar-fill" style="width:'+rp+'%;background:#059669;"></div></div></td><td>'+r.bo.toFixed(1)+'%</td>';
+            tr2.innerHTML='<td><span class="cat-badge" style="background:'+co+'">'+(r.key==='other'?'?':r.key.toUpperCase())+'</span></td><td class="cat-name-col">'+r.name+'</td><td>'+r.productCount.toLocaleString()+'</td><td style="font-weight:700">'+r.vi.toLocaleString()+'</td><td class="bar-cell"><span>'+vp+'%</span><div class="bar-bg"><div class="bar-fill" style="width:'+vp+'%;background:'+co+';"></div></div></td><td><canvas class="cat-sparkline" data-v=\''+JSON.stringify(r.sparkVals)+'\' data-c=\''+co+'\'></canvas></td><td>'+r.us.toLocaleString()+'</td><td>'+r.av+'</td><td><span class="'+wc+'">'+wt+'</span></td><td>'+r.ca+'</td><td>'+r.cr+'%</td><td>'+r.od+'</td><td>'+r.cv+'%</td><td style="font-weight:600">'+fm(r.rv)+'</td><td class="bar-cell"><span>'+rp+'%</span><div class="bar-bg"><div class="bar-fill" style="width:'+rp+'%;background:#059669;"></div></div></td><td>'+r.bo.toFixed(1)+'%</td>';
             tb.appendChild(tr2);
         });
         var tc=rows.reduce(function(s,r){return s+r.ca},0),to=rows.reduce(function(s,r){return s+r.od},0);
@@ -642,8 +830,15 @@ def _build_category_js():
         tb.appendChild(tt);
         document.querySelectorAll('canvas.cat-sparkline').forEach(function(c){spark(c,JSON.parse(c.getAttribute('data-v')),c.getAttribute('data-c'));});
     }
+
+    document.getElementById('catGranularitySelector').addEventListener('change',function(){
+        granularity = this.value;
+        populateSelector();
+        render();
+    });
     document.getElementById('catWeekSelector').addEventListener('change',function(){csw=this.value==='all'?-1:parseInt(this.value);render();});
     document.getElementById('catSortSelector').addEventListener('change',render);
+    populateSelector();
     render();
 })();
 """
@@ -657,7 +852,14 @@ def main():
     products = step1_read_ecommerce()
     all_sorted, cat_products, needed, active_cats, prefixBench = step2_classify_and_rank(products)
     step3_match_orders(products, needed)
-    top50_output, cat_data = step4_save_json(products, all_sorted, cat_products, needed, active_cats, prefixBench)
+    orders_file = find_orders_file()
+    cat_revenue = step3b_category_revenue(orders_file) if orders_file else None
+    if cat_revenue:
+        print(f"📊 分类收入汇总完成（按首字母直接统计）")
+    top50_output, cat_data = step4_save_json(
+        products, all_sorted, cat_products, needed, active_cats, prefixBench,
+        cat_revenue=cat_revenue,
+    )
     step5_rebuild_dashboard(top50_output, cat_data)
 
     print("\n" + "=" * 60)
