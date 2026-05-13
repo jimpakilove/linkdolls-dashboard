@@ -89,8 +89,18 @@ def read_ecom_csv(path):
     return list(csv.DictReader(lines[header_idx:]))
 
 
+def normalize_date(d):
+    """统一日期格式：2026/4/29 -> 2026-04-29"""
+    if '/' in d:
+        parts = d.split('/')
+        if len(parts) == 3:
+            return f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+    return d
+
+
 def date_to_week(d):
     """日期字符串 -> 周索引，不在范围内返回 -1"""
+    d = normalize_date(d)
     if d < WEEK_STARTS[0] or d >= WEEK_END:
         return -1
     for i in range(len(WEEK_STARTS) - 1, -1, -1):
