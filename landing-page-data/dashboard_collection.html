@@ -569,8 +569,15 @@ body {
       <select class="selector" id="catSelect" onchange="onCatChange()"></select>
     </div>
     <div class="selector-group">
+      <span class="selector-label">时间颗粒度</span>
+      <select class="selector" id="granularitySelect" onchange="onGranularityChange()" style="min-width:120px">
+        <option value="week">自然周</option>
+        <option value="4week">4周周期</option>
+      </select>
+    </div>
+    <div class="selector-group">
       <span class="selector-label">周期</span>
-      <select class="selector" id="periodSelect" onchange="setPeriod(this.value)" style="min-width:140px"></select>
+      <select class="selector" id="periodSelect" onchange="setPeriod(this.value)" style="min-width:180px"></select>
     </div>
   </div>
 </div>
@@ -591,10 +598,12 @@ body {
 let RAW = null;
 let currentCat = '';
 let period = '';
+let granularity = 'week'; // 'week' or '4week'
 let charts = {};
 let kwFilter = 'all';
 let clickView = 'top20';
 let currentQuarter = 'Q' + Math.ceil((new Date().getMonth() + 1) / 3); // 自动计算当前季度
+let periods4w = []; // 4周周期列表
 
 /* KPI卡片辅助函数 - 带信息提示 */
 function kpi(label, value, sub, info) {
@@ -717,61 +726,131 @@ function initSelectors() {
   sel.innerHTML = html;
 }
 
+/* 构建4周周期列表 */
+function build4wPeriods(allWeeks) {
+  const periods = [];
+  for (let i = 0; i < allWeeks.length; i += 4) {
+    const endIdx = Math.min(i + 3, allWeeks.length - 1);
+    const weekFolders = allWeeks.slice(i, endIdx + 1);
+    const startW = weekFolders[0];
+    const endW = weekFolders[weekFolders.length - 1];
+    const startMatch = startW.match(/w(\d+)_(\d{4}-\d{2}-\d{2})/);
+    const endMatch = endW.match(/w(\d+)_(\d{4}-\d{2}-\d{2})/);
+    const sWeek = startMatch ? 'W' + parseInt(startMatch[1]) : startW;
+    const eWeek = endMatch ? 'W' + parseInt(endMatch[1]) : endW;
+    const sDate = startMatch ? startMatch[2] : '';
+    const eDateRaw = endMatch ? endMatch[2] : '';
+    // end date = start of last week + 6 days
+    let eDateDisp = eDateRaw;
+    if (eDateRaw) {
+      const dp = eDateRaw.split('-').map(Number);
+      const ed = new Date(dp[0], dp[1]-1, dp[2]);
+      ed.setDate(ed.getDate() + 6);
+      eDateDisp = `${ed.getFullYear()}-${String(ed.getMonth()+1).padStart(2,'0')}-${String(ed.getDate()).padStart(2,'0')}`;
+    }
+    const isFull = weekFolders.length === 4;
+    periods.push({
+      key: startW, // use start week folder as key
+      label: `${sWeek}–${eWeek} · ${sDate}–${eDateDisp}${isFull ? '' : ' (不足4周)'}`,
+      weekFolders: weekFolders,
+      startIdx: i,
+      endIdx: endIdx,
+      isFull: isFull
+    });
+  }
+  return periods;
+}
+
 /* 分类切换 */
 function onCatChange() {
   currentCat = document.getElementById('catSelect').value;
   
-  // 找最近有数据的周
+  // 收集该分类所有周
   const catData = RAW.data[currentCat] || {};
   const weeks = Object.keys(catData).sort();
   
-  // 默认选中最近有数据的周
+  // 构建4周周期
+  periods4w = build4wPeriods(weeks);
+  
+  // 默认选中最近有数据的周（或周期）
   let lastWithData = '';
   for (const w of weeks) {
     if (catData[w] && catData[w].hasData) {
-      lastWithData = w;  // 继续找，取最后一个有数据的
+      lastWithData = w;
     }
   }
-  period = lastWithData || weeks[weeks.length - 1] || '';
+  
+  if (granularity === 'week') {
+    period = lastWithData || weeks[weeks.length - 1] || '';
+  } else {
+    // 找包含最近有数据周的周期
+    let lastPeriod = periods4w[periods4w.length - 1];
+    for (let i = periods4w.length - 1; i >= 0; i--) {
+      if (periods4w[i].weekFolders.includes(lastWithData)) {
+        lastPeriod = periods4w[i];
+        break;
+      }
+    }
+    period = lastPeriod ? lastPeriod.key : '';
+  }
   
   // 渲染周期标签
   renderPeriodTabs();
   renderAll();
 }
 
+/* 时间颗粒度切换 */
+function onGranularityChange() {
+  granularity = document.getElementById('granularitySelect').value;
+  onCatChange(); // re-init periods and default selection
+}
+
 /* 周期下拉列表 */
 function renderPeriodTabs() {
   const catData = RAW.data[currentCat] || {};
-  const weeks = Object.keys(catData).sort();
-  
-  // 自动计算当前周数
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const currentWeek = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
-  const validWeeks = weeks.filter(w => {
-    const weekNum = parseInt(w.replace('w', '').split('_')[0]) || 0;
-    return weekNum <= currentWeek;
-  });
-  
-  // 分组：有数据 / 无数据
-  const weeksWithData = validWeeks.filter(w => catData[w] && catData[w].hasData);
-  const weeksNoData = validWeeks.filter(w => !catData[w] || !catData[w].hasData);
-  
   const sel = document.getElementById('periodSelect');
-  sel.innerHTML = 
-    (weeksWithData.length > 0 
-      ? `<optgroup label="有数据">${weeksWithData.reverse().map(w => {
-          const d = catData[w];
-          return `<option value="${w}" ${w === period ? 'selected' : ''}>${d.week}-${d.date} ✓</option>`;
-        }).join('')}</optgroup>` 
-      : '') +
-    `<optgroup label="无数据">${weeksNoData.reverse().slice(0, 10).map(w => {
-      const parts = w.split('_');
-      const weekNum = parts[0].replace('w', '');
-      const dateStr = parts[1] || '';
-      const date = dateStr ? `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}` : '';
-      return `<option value="${w}" ${w === period ? 'selected' : ''}>w${weekNum}-${date}</option>`;
-    }).join('')}</optgroup>`;
+  
+  if (granularity === 'week') {
+    const weeks = Object.keys(catData).sort();
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const currentWeek = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+    const validWeeks = weeks.filter(w => {
+      const weekNum = parseInt(w.replace('w', '').split('_')[0]) || 0;
+      return weekNum <= currentWeek;
+    });
+    const weeksWithData = validWeeks.filter(w => catData[w] && catData[w].hasData);
+    const weeksNoData = validWeeks.filter(w => !catData[w] || !catData[w].hasData);
+    
+    sel.innerHTML = 
+      (weeksWithData.length > 0 
+        ? `<optgroup label="有数据">${weeksWithData.reverse().map(w => {
+            const d = catData[w];
+            return `<option value="${w}" ${w === period ? 'selected' : ''}>${d.week}-${d.date} ✓</option>`;
+          }).join('')}</optgroup>` 
+        : '') +
+      `<optgroup label="无数据">${weeksNoData.reverse().slice(0, 10).map(w => {
+        const parts = w.split('_');
+        const weekNum = parts[0].replace('w', '');
+        const dateStr = parts[1] || '';
+        const date = dateStr ? `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}` : '';
+        return `<option value="${w}" ${w === period ? 'selected' : ''}>w${weekNum}-${date}</option>`;
+      }).join('')}</optgroup>`;
+  } else {
+    // 4week mode
+    const pWithData = periods4w.filter(p => p.weekFolders.some(w => catData[w] && catData[w].hasData));
+    const pNoData = periods4w.filter(p => !p.weekFolders.some(w => catData[w] && catData[w].hasData));
+    
+    sel.innerHTML = 
+      (pWithData.length > 0
+        ? `<optgroup label="有数据">${pWithData.reverse().map(p => {
+            return `<option value="${p.key}" ${p.key === period ? 'selected' : ''}>${p.label} ✓</option>`;
+          }).join('')}</optgroup>`
+        : '') +
+      `<optgroup label="无数据">${pNoData.reverse().map(p => {
+        return `<option value="${p.key}" ${p.key === period ? 'selected' : ''}>${p.label}</option>`;
+      }).join('')}</optgroup>`;
+  }
 }
 
 function setPeriod(p) {
@@ -779,12 +858,228 @@ function setPeriod(p) {
   renderAll();
 }
 
+/* 聚合4周数据 */
+function aggregateWeeks(weekFolders) {
+  const catData = RAW.data[currentCat] || {};
+  const weeks = [];
+  for (const wf of weekFolders) {
+    if (catData[wf]) weeks.push(catData[wf]);
+  }
+  if (weeks.length === 0) return null;
+  if (weeks.length === 1) return weeks[0];
+  
+  // Start with first week as base
+  const base = JSON.parse(JSON.stringify(weeks[0]));
+  
+  // Helper: sum values
+  function sum(arr, key) { return arr.reduce((s, w) => s + (w[key] || 0), 0); }
+  
+  // GSC: clicks, impressions sum; ctr, rank weighted by impressions/clicks
+  let totalClicks = 0, totalImp = 0, clickWeightedRank = 0;
+  for (const w of weeks) {
+    const g = w.gsc || {};
+    totalClicks += g.clicks || 0;
+    totalImp += g.impressions || 0;
+    clickWeightedRank += (g.rank || 0) * (g.clicks || 0);
+  }
+  base.gsc.clicks = totalClicks;
+  base.gsc.impressions = totalImp;
+  base.gsc.ctr = totalImp > 0 ? (totalClicks / totalImp * 100) : 0;
+  base.gsc.rank = totalClicks > 0 ? (clickWeightedRank / totalClicks) : (base.gsc.rank || 0);
+  
+  // GA4: pageviews, activeUsers sum
+  let totalPv = 0, totalAu = 0;
+  for (const w of weeks) {
+    const g = w.ga4 || {};
+    totalPv += g.pageviews || 0;
+    totalAu += g.activeUsers || 0;
+  }
+  base.ga4.pageviews = totalPv;
+  base.ga4.activeUsers = totalAu;
+  
+  // LandingPage: sessions, visitors, addToCart, checkout, purchase sum; bounceRate, pageviewsPerSession, avgSessionDuration weighted by sessions
+  let totalSess = 0, totalVisitors = 0, totalAtc = 0, totalChk = 0, totalPur = 0;
+  let bounceWeighted = 0, ppsWeighted = 0, durWeighted = 0;
+  for (const w of weeks) {
+    const lp = w.landingPage || {};
+    const sess = lp.sessions || 0;
+    totalSess += sess;
+    totalVisitors += lp.visitors || 0;
+    totalAtc += lp.addToCart || 0;
+    totalChk += lp.checkout || 0;
+    totalPur += lp.purchase || 0;
+    bounceWeighted += (lp.bounceRate || 0) * sess;
+    ppsWeighted += (lp.pageviewsPerSession || 0) * sess;
+    durWeighted += (lp.avgSessionDuration || 0) * sess;
+  }
+  base.landingPage.sessions = totalSess;
+  base.landingPage.visitors = totalVisitors;
+  base.landingPage.addToCart = totalAtc;
+  base.landingPage.checkout = totalChk;
+  base.landingPage.purchase = totalPur;
+  base.landingPage.bounceRate = totalSess > 0 ? (bounceWeighted / totalSess) : 0;
+  base.landingPage.pageviewsPerSession = totalSess > 0 ? (ppsWeighted / totalSess) : 0;
+  base.landingPage.avgSessionDuration = totalSess > 0 ? (durWeighted / totalSess) : 0;
+  
+  // Queries: merge by kw, sum clicks & imp, recalc ctr and rank
+  const qMap = {};
+  for (const w of weeks) {
+    for (const q of (w.queries || [])) {
+      if (!qMap[q.kw]) {
+        qMap[q.kw] = { kw: q.kw, clicks: 0, imp: 0, rankSum: 0, rankCount: 0 };
+      }
+      qMap[q.kw].clicks += q.clicks || 0;
+      qMap[q.kw].imp += q.imp || 0;
+      if (q.rank) { qMap[q.kw].rankSum += q.rank; qMap[q.kw].rankCount += 1; }
+    }
+  }
+  base.queries = Object.values(qMap).map(q => {
+    const ctr = q.imp > 0 ? (q.clicks / q.imp * 100) : 0;
+    const rank = q.rankCount > 0 ? (q.rankSum / q.rankCount) : 999;
+    let tag = 'ctr';
+    if (rank <= 3) tag = 'top3';
+    else if (rank <= 10) tag = 'top10';
+    else if (rank <= 20) tag = 'opp';
+    else if (q.clicks === 0) tag = 'zero';
+    return { kw: q.kw, rank: Math.round(rank * 100) / 100, clicks: q.clicks, imp: q.imp, ctr: Math.round(ctr * 10) / 10, tag: tag };
+  });
+  
+  // Devices: merge by device, sum clicks & impressions
+  const dMap = {};
+  for (const w of weeks) {
+    for (const dev of (w.devices || [])) {
+      if (!dMap[dev.device]) dMap[dev.device] = { device: dev.device, clicks: 0, impressions: 0 };
+      dMap[dev.device].clicks += dev.clicks || 0;
+      dMap[dev.device].impressions += dev.impressions || 0;
+    }
+  }
+  base.devices = Object.values(dMap).map(dev => {
+    const ctr = dev.impressions > 0 ? (dev.clicks / dev.impressions * 100).toFixed(1) + '%' : '0%';
+    return { device: dev.device, clicks: dev.clicks, impressions: dev.impressions, ctr: ctr, rank: 0 };
+  });
+  
+  // Countries: same as devices
+  const cMap = {};
+  for (const w of weeks) {
+    for (const c of (w.countries || [])) {
+      if (!cMap[c.device]) cMap[c.device] = { device: c.device, clicks: 0, impressions: 0 };
+      cMap[c.device].clicks += c.clicks || 0;
+      cMap[c.device].impressions += c.impressions || 0;
+    }
+  }
+  base.countries = Object.values(cMap).map(c => {
+    const ctr = c.impressions > 0 ? (c.clicks / c.impressions * 100).toFixed(1) + '%' : '0%';
+    return { device: c.device, clicks: c.clicks, impressions: c.impressions, ctr: ctr, rank: 0 };
+  });
+  
+  // Clicks: merge by url, sum clicks
+  const clMap = {};
+  for (const w of weeks) {
+    for (const cl of (w.clicks || [])) {
+      if (!clMap[cl.url]) clMap[cl.url] = { rank: cl.rank, type: cl.type, name: cl.name, clicks: 0, url: cl.url };
+      clMap[cl.url].clicks += cl.clicks || 0;
+    }
+  }
+  // re-rank
+  const allClicks = Object.values(clMap).sort((a, b) => b.clicks - a.clicks);
+  base.clicks = allClicks.map((c, i) => ({ ...c, rank: i + 1 }));
+  
+  // Conversion: merge by device
+  const convMap = {};
+  for (const w of weeks) {
+    for (const [dev, vals] of Object.entries(w.conversion || {})) {
+      if (!convMap[dev]) convMap[dev] = { sessions: 0, viewProduct: 0, addToCart: 0, checkout: 0, purchase: 0 };
+      for (const k of Object.keys(convMap[dev])) {
+        convMap[dev][k] += vals[k] || 0;
+      }
+    }
+  }
+  base.conversion = convMap;
+  
+  // CartAdds: merge by name
+  const caMap = {};
+  for (const w of weeks) {
+    for (const ca of (w.cartAdds || [])) {
+      if (!caMap[ca.name]) caMap[ca.name] = { name: ca.name, cartAdds: 0 };
+      caMap[ca.name].cartAdds += ca.cartAdds || 0;
+    }
+  }
+  base.cartAdds = Object.values(caMap).sort((a, b) => b.cartAdds - a.cartAdds).slice(0, 20);
+  
+  // Revenue: aggregate by quarter
+  const revMap = {};
+  for (const w of weeks) {
+    for (const [q, qData] of Object.entries(w.revenue || {})) {
+      if (!revMap[q]) {
+        revMap[q] = { orders: 0, totalSales: 0, avgPrice: 0, products: {}, monthlySales: {} };
+      }
+      revMap[q].orders += qData.orders || 0;
+      revMap[q].totalSales += qData.totalSales || 0;
+      // merge products
+      for (const p of (qData.products || [])) {
+        if (!revMap[q].products[p.name]) revMap[q].products[p.name] = { name: p.name, orders: 0, sales: 0 };
+        revMap[q].products[p.name].orders += p.orders || 0;
+        revMap[q].products[p.name].sales += p.sales || 0;
+      }
+      // merge monthly sales
+      for (const [m, v] of Object.entries(qData.monthlySales || {})) {
+        revMap[q].monthlySales[m] = (revMap[q].monthlySales[m] || 0) + v;
+      }
+    }
+  }
+  // finalize revenue
+  base.revenue = {};
+  for (const [q, r] of Object.entries(revMap)) {
+    const prods = Object.values(r.products).sort((a, b) => b.sales - a.sales).slice(0, 10);
+    const orders = r.orders;
+    base.revenue[q] = {
+      orders: orders,
+      totalSales: Math.round(r.totalSales * 100) / 100,
+      avgPrice: orders > 0 ? Math.round(r.totalSales / orders * 100) / 100 : 0,
+      products: prods,
+      monthlySales: r.monthlySales
+    };
+  }
+  
+  // Update week/date labels
+  const pDef = periods4w.find(p => p.key === period);
+  if (pDef) {
+    base.week = pDef.weekFolders.map(w => {
+      const m = w.match(/w(\d+)/);
+      return m ? 'W' + parseInt(m[1]) : w;
+    }).join('–');
+    base.weekFolder = period;
+    const sMatch = pDef.weekFolders[0].match(/w\d+_(\d{4}-\d{2}-\d{2})/);
+    const eMatch = pDef.weekFolders[pDef.weekFolders.length - 1].match(/w\d+_(\d{4}-\d{2}-\d{2})/);
+    const sDate = sMatch ? sMatch[1] : '';
+    const eDateRaw = eMatch ? eMatch[1] : '';
+    let eDateDisp = eDateRaw;
+    if (eDateRaw) {
+      const dp = eDateRaw.split('-').map(Number);
+      const ed = new Date(dp[0], dp[1]-1, dp[2]);
+      ed.setDate(ed.getDate() + 6);
+      eDateDisp = `${ed.getFullYear()}-${String(ed.getMonth()+1).padStart(2,'0')}-${String(ed.getDate()).padStart(2,'0')}`;
+    }
+    base.date = sDate + '–' + eDateDisp;
+  }
+  
+  base.hasData = weeks.some(w => w.hasData);
+  return base;
+}
+
 /* 主渲染 */
 function renderAll() {
   Object.values(charts).forEach(c => c?.destroy?.());
   charts = {};
   
-  const d = RAW.data[currentCat]?.[period];
+  let d;
+  if (granularity === 'week') {
+    d = RAW.data[currentCat]?.[period];
+  } else {
+    const pDef = periods4w.find(p => p.key === period);
+    d = pDef ? aggregateWeeks(pDef.weekFolders) : null;
+  }
+  
   const badge = document.getElementById('statusBadge');
   
   if (d?.hasData) {
