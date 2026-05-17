@@ -109,15 +109,22 @@ def load_orders_all():
     
     # 读取所有订单文件并合并
     orders = []
+    seen_keys = set()  # (订单名称, 产品标题) 去重，避免多 tag 导致重复计算
     for filepath in files:
         orders_path = Path(filepath)
         print(f"📦 读取订单文件: {orders_path.name}")
         with open(orders_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                order_name = row.get('订单名称', row.get('Order name', ''))
+                product_title = row.get('产品标题', row.get('Product title', ''))
+                dedup_key = (order_name, product_title)
+                if dedup_key in seen_keys:
+                    continue  # 跳过因多 tag 产生的重复行
+                seen_keys.add(dedup_key)
                 orders.append(row)
     
-    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
+    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件，已去重）")
     return orders
 
 def get_field(row, field, default=''):
@@ -155,12 +162,41 @@ def normalize_order_tag(tag):
     return normalized
 
 def calculate_revenue_by_category(orders_all, category):
-    """按页面归因计算收入数据 - 按季度拆分"""
-    url_path = f"/collections/{category}"
-    if category == 'linkdolls.com':
-        url_path = 'linkdolls.com'
+    """按产品首字母归因计算收入数据 - 按季度拆分（不依赖 Order tag）"""
+    # 将 category slug 映射到首字母
+    category_prefix_map = {
+        'ass': 'a', 'bbw-sex-doll-torso': 'a', 'black-sex-dolls': 'a', 'fake-ass-sex-toy': 'a',
+        'alien-sex-dolls': 'a', 'asian-sex-doll': 'a',
+        'boob-job-sex-toys': 'b',
+        'dildo': 'd',
+        'full-size-sex-doll': 'f', 'sex-doll': 'f', 'anime-sex-doll': 'f', 'celebrity-sex-dolls': 'f',
+        'sex-doll-head': 'h',
+        'sex-doll-legs': 'l',
+        'male-sex-doll': 'm',
+        'fake-pussy-fake-vagina': 'p',
+        'sex-doll-torso': 't', 'sex-doll-torso-dildo': 't', 'shemale-sex-doll-torso-1': 't', 'black-torso': 't',
+        'vajankle-foot-fetish-toys': 'v',
+    }
+    target_prefix = category_prefix_map.get(category)
+    if not target_prefix:
+        # 无映射的分类，尝试用 category 首字母
+        if category and category[0].isalpha():
+            target_prefix = category[0].lower()
+        else:
+            return {'Q1': {'orders':0,'totalSales':0,'avgPrice':0,'products':[],'monthlySales':{'01':0,'02':0,'03':0}},
+                    'Q2': {'orders':0,'totalSales':0,'avgPrice':0,'products':[],'monthlySales':{'04':0,'05':0,'06':0}},
+                    'Q3': {'orders':0,'totalSales':0,'avgPrice':0,'products':[],'monthlySales':{'07':0,'08':0,'09':0}},
+                    'Q4': {'orders':0,'totalSales':0,'avgPrice':0,'products':[],'monthlySales':{'10':0,'11':0,'12':0}}}
     
-    filtered = [o for o in orders_all if normalize_order_tag(get_field(o, 'Order tag')) == url_path]
+    # 按 Product title 首字母过滤，不依赖 Order tag
+    filtered = []
+    for o in orders_all:
+        title = get_field(o, 'Product title', '').strip()
+        if not title or 'Shipping' in title:
+            continue
+        prefix = extract_prefix_from_title(title)
+        if prefix == target_prefix:
+            filtered.append(o)
     
     quarter_months = {
         'Q1': ['01', '02', '03'],

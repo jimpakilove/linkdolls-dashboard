@@ -1086,6 +1086,48 @@ const data = window.__EMBEDDED_DATA__;
     var granularity = 'week'; // 'week' or '4week'
     var csw = -1;
 
+    // 从 category_revenue.json 加载收入数据覆盖零值
+    var revenueReady = false;
+    function mergeRevenueData(revData) {
+        if (!revData || !revData.categories) return;
+        var revMap = {};
+        revData.categories.forEach(function(rc) { revMap[rc.key] = rc; });
+        // 建立 category_revenue 周标签 -> __CAT_DATA__ 周索引映射
+        var catWeeks = revData.weeks || []; // e.g. ["W1",...,"W52"]
+        var myWeeks = cd.weeks || []; // e.g. ["W10",..."W19"]
+        var weekIdxMap = {}; // catWeeks index -> myWeeks index
+        myWeeks.forEach(function(w, mi) {
+            var ci = catWeeks.indexOf(w);
+            if (ci >= 0) weekIdxMap[ci] = mi;
+        });
+        var totalRev = 0, totalOrd = 0;
+        cd.categories.forEach(function(c) {
+            var rc = revMap[c.key];
+            if (!rc) return;
+            // 填充 weeklyRevenue 和 weeklyOrders
+            var wr = new Array(myWeeks.length).fill(0);
+            var wo = new Array(myWeeks.length).fill(0);
+            rc.weeklyRevenue.forEach(function(v, ci) {
+                if (weekIdxMap[ci] !== undefined) { wr[weekIdxMap[ci]] = v; }
+            });
+            rc.weeklyOrders.forEach(function(v, ci) {
+                if (weekIdxMap[ci] !== undefined) { wo[weekIdxMap[ci]] = v; }
+            });
+            c.weeklyRevenue = wr;
+            c.weeklyOrders = wo;
+            c.totalRevenue = Math.round(wr.reduce(function(a,b){return a+b;},0)*100)/100;
+            c.totalOrders = wo.reduce(function(a,b){return a+b;},0);
+            totalRev += rc.totalRevenue;
+            totalOrd += rc.totalOrders;
+        });
+        // 重新计算 allWeeklyRevenue
+        cd.allWeeklyRevenue = myWeeks.map(function(_, mi) {
+            return cd.categories.reduce(function(s, c) { return s + (c.weeklyRevenue[mi] || 0); }, 0);
+        });
+        revenueReady = true;
+    }
+    fetch('category_revenue.json').then(function(r){return r.json()}).then(function(d){mergeRevenueData(d);render();}).catch(function(e){console.warn('收入数据加载失败:',e)});
+
     // Build 4-week periods from weekStarts
     var periods4w = [];
     if (cd.weekStarts) {
