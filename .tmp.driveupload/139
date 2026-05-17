@@ -42,3 +42,4 @@ b8bca7acd0048e5e1fa893e3f9ae14d1aabb765a 91b4f9f61503d3af3f40a2d68f34e433f93a128
 d4165fdf45afa5022c89a64e9834785698775575 6d597d7f21d940c8df1aedc83d60424eb41d8184 jim <apple@appledeMac-mini-3.local> 1779014541 +0800	pull --rebase (pick): fix: 修复产品类型横向对比收入数据为0及重复计算问题
 6d597d7f21d940c8df1aedc83d60424eb41d8184 6d597d7f21d940c8df1aedc83d60424eb41d8184 jim <apple@appledeMac-mini-3.local> 1779014541 +0800	pull --rebase (finish): returning to refs/heads/main
 6d597d7f21d940c8df1aedc83d60424eb41d8184 7097799b2f6765600371e6b3d0ae41ee0a1c135a jim <apple@appledeMac-mini-3.local> 1779015000 +0800	commit: rename: sex-doll-torso-dildo-for-woman → sex-doll-torso-dildo
+7097799b2f6765600371e6b3d0ae41ee0a1c135a 67ff56c3cc7c0b654e058540b3ea31e23cdb76f4 jim <apple@appledeMac-mini-3.local> 1779015388 +0800	commit: revert: 恢复 calculate_revenue_by_category 按 Order tag 归因的逻辑

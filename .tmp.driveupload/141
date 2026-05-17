@@ -1,1 +1,4 @@
-rename: sex-doll-torso-dildo-for-woman → sex-doll-torso-dildo
+revert: 恢复 calculate_revenue_by_category 按 Order tag 归因的逻辑
+
+分类页数据看板保持按 Order tag 归因到具体 Collection 页，
+类别横向对比保持按 Product title 首字母归因
