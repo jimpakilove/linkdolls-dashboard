@@ -230,7 +230,8 @@ def calculate_revenue_by_category(orders_all, category):
         
         monthly_sales = defaultdict(float)
         for o in q_orders:
-            day = get_field(o, 'Day', '').strip()
+            day_raw = get_field(o, 'Day', '').strip()
+            day = normalize_date(day_raw)
             if len(day) >= 7:
                 month = day[5:7]
                 monthly_sales[month] += float(get_field(o, 'Net sales', 0) or 0)
