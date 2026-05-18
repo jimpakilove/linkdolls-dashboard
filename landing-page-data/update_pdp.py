@@ -504,6 +504,7 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
 
     top50_output = {
         'weeks': WEEK_NAMES,
+        'weekStarts': WEEK_STARTS,
         'products': out_products,
         'categories': categories_info,
         'summary': {'allWeeklyViews': all_wv, 'allWeeklyRevenue': all_wr},
