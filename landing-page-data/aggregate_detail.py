@@ -108,7 +108,10 @@ def load_orders_all():
         return []
     
     # 读取所有订单文件并合并
+    # 按 (订单名称, 产品标题) 去重，优先保留 Order tag 为 /collections/ 的行
+    # 因为 Shopify 导出中同一订单-产品可能因多 tag 重复，需要选最有用的 tag
     orders = []
+    seen_keys = {}  # key -> row index in orders
     for filepath in files:
         orders_path = Path(filepath)
         print(f"📦 读取订单文件: {orders_path.name}")
@@ -116,9 +119,24 @@ def load_orders_all():
         with open(orders_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                orders.append(row)
+                order_name = row.get('订单名称', row.get('Order name', ''))
+                product_title = row.get('产品标题', row.get('Product title', ''))
+                dedup_key = (order_name, product_title)
+                tag = row.get('订单标记', row.get('Order tag', '')).strip()
+                norm_tag = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', tag)
+                
+                if dedup_key not in seen_keys:
+                    seen_keys[dedup_key] = len(orders)
+                    orders.append(row)
+                else:
+                    # 已存在，如果新行的 tag 是 /collections/ 而旧行不是，替换
+                    old_idx = seen_keys[dedup_key]
+                    old_tag = orders[old_idx].get('订单标记', orders[old_idx].get('Order tag', '')).strip()
+                    old_norm = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', old_tag)
+                    if norm_tag.startswith('/collections/') and not old_norm.startswith('/collections/'):
+                        orders[old_idx] = row
     
-    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
+    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件，已去重，/collections/ tag 优先）")
     return orders
 
 # 全局缓存：row id → normalized keys 映射
@@ -227,7 +245,8 @@ def calculate_revenue_by_category(orders_all, category):
         
         monthly_sales = defaultdict(float)
         for o in q_orders:
-            day = get_field(o, 'Day', '').strip()
+            day_raw = get_field(o, 'Day', '').strip()
+            day = normalize_date(day_raw)
             if len(day) >= 7:
                 month = day[5:7]
                 monthly_sales[month] += float(get_field(o, 'Net sales', 0) or 0)

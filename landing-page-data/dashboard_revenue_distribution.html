@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>销售金额区间分布报表</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:#f5f5f5; color:#333; }
+        .container { max-width:1400px; margin:0 auto; padding:20px; }
+
+        .header { background:white; padding:24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+        .header-title { font-size:28px; font-weight:700; margin-bottom:8px; color:#1a1a1a; }
+        .header-sub { font-size:14px; color:#666; }
+        .header-meta { font-size:12px; color:#999; margin-top:8px; }
+
+        .filters { background:white; padding:16px 24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); display:flex; gap:20px; align-items:flex-end; flex-wrap:wrap; }
+        .filter-group { display:flex; flex-direction:column; }
+        .filter-label { font-size:12px; color:#888; margin-bottom:4px; font-weight:600; }
+        .filter-select { padding:8px 14px; border:1.5px solid #e5e7eb; border-radius:6px; font-size:13px; cursor:pointer; min-width:140px; }
+        .filter-select:focus { outline:none; border-color:#2563eb; }
+
+        .view-tabs { display:flex; gap:6px; }
+        .view-tab { padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px solid #e5e7eb; background:white; color:#555; transition:all 0.15s; user-select:none; }
+        .view-tab:hover { border-color:#a5b4fc; background:#f5f3ff; }
+        .view-tab.active { background:#2563eb; color:white; border-color:#2563eb; }
+
+        .card { background:white; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px; overflow:hidden; }
+        .card-title { padding:16px 20px; font-size:16px; font-weight:700; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; }
+        .card-title-info { font-size:12px; color:#999; font-weight:400; }
+
+        .table-scroll { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { background:#fafafa; padding:12px 14px; text-align:center; font-weight:600; color:#666; border-bottom:2px solid #e5e7eb; white-space:nowrap; position:sticky; top:0; }
+        th:first-child { text-align:left; min-width:100px; }
+        th.range-col { min-width:90px; }
+        th.total-col { background:#f0f4ff; color:#2563eb; font-weight:700; }
+
+        td { padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:center; white-space:nowrap; position:relative; }
+        td:first-child { text-align:left; font-weight:600; color:#1a1a1a; }
+        td.total-cell { background:#f8fafc; font-weight:700; color:#2563eb; }
+        td.grand-total { background:#2563eb; color:white; font-weight:700; font-size:14px; }
+        td.grand-total-cell { background:#eef2ff; font-weight:700; color:#2563eb; }
+
+        tr:hover td { background:#f8fafc; }
+        tr:hover td.grand-total { background:#1d4ed8; }
+        tr:hover td.grand-total-cell { background:#dbeafe; }
+        tr:hover td.total-cell { background:#e0e7ff; }
+
+        .cell-value { font-weight:600; position:relative; z-index:1; }
+        .cell-pct { font-size:11px; color:#888; margin-top:2px; }
+        .cell-bar { position:absolute; bottom:0; left:0; height:3px; border-radius:0 2px 0 0; transition:width 0.3s; }
+
+        .summary-row { background:#f8fafc; }
+        .summary-row td { font-weight:700; border-top:2px solid #e5e7eb; }
+
+        .trend-up { color:#059669; }
+        .trend-down { color:#dc2626; }
+
+        .legend { display:flex; gap:16px; flex-wrap:wrap; padding:12px 20px; background:#fafafa; border-top:1px solid #f0f0f0; font-size:12px; color:#666; }
+        .legend-item { display:flex; align-items:center; gap:6px; }
+        .legend-color { width:16px; height:16px; border-radius:3px; }
+
+        .empty-state { padding:60px 20px; text-align:center; color:#999; }
+        .empty-state-icon { font-size:48px; margin-bottom:16px; }
+    </style>
+</head>
+<body>
+<script id="embedded-data">
+window.__REVENUE_DATA__ = {"months":["2026年1月","2026年2月","2026年3月","2026年4月","2026年5月"],"ranges":["<100","100-199","200-299","300-599","600-999","1000-1999",">2000"],"orderCounts":{"2026年1月":{"<100":535,"100-199":51,"200-299":48,"300-599":99,"600-999":46,"1000-1999":22,">2000":8},"2026年2月":{"<100":260,"100-199":19,"200-299":18,"300-599":45,"600-999":48,"1000-1999":11,">2000":14},"2026年3月":{"<100":181,"100-199":21,"200-299":10,"300-599":41,"600-999":20,"1000-1999":8,">2000":5},"2026年4月":{"<100":151,"100-199":11,"200-299":11,"300-599":22,"600-999":20,"1000-1999":8,">2000":10},"2026年5月":{"<100":89,"100-199":14,"200-299":14,"300-599":20,"600-999":7,"1000-1999":2,">2000":2}},"revenues":{"2026年1月":{"<100":-1409.95,"100-199":8920.17,"200-299":12649.42,"300-599":43709.88,"600-999":33954.56,"1000-1999":25860.85,">2000":19596.03},"2026年2月":{"<100":-1436.46,"100-199":3302.2,"200-299":4986.33,"300-599":22795.85,"600-999":36402.42,"1000-1999":13748.33,">2000":37097.01},"2026年3月":{"<100":-7768.03,"100-199":3335.2,"200-299":2647.0,"300-599":19320.7,"600-999":15212.64,"1000-1999":11045.11,">2000":12993.0},"2026年4月":{"<100":1805.16,"100-199":1744.1,"200-299":3035.2,"300-599":9987.5,"600-999":15502.35,"1000-1999":11359.16,">2000":24917.82},"2026年5月":{"<100":-44.21,"100-199":2574.0,"200-299":3649.2,"300-599":8341.47,"600-999":4875.2,"1000-1999":3215.96,">2000":6959.2}}};
+</script>
+
+<div class="container">
+    <div class="header">
+        <div class="header-title">按销售金额区间分布</div>
+        <div class="header-sub">按月统计各金额区间的订单数量与收入分布</div>
+        <div class="header-meta">数据来源：订单明细表导出2026-05-10.csv | 共 1891 条订单记录</div>
+    </div>
+
+    <div class="filters">
+        <div class="filter-group">
+            <div class="filter-label">显示指标</div>
+            <div class="view-tabs">
+                <div class="view-tab active" data-view="orders">订单数量</div>
+                <div class="view-tab" data-view="revenue">收入金额</div>
+            </div>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">显示模式</div>
+            <div class="view-tabs">
+                <div class="view-tab active" data-mode="value">数值</div>
+                <div class="view-tab" data-mode="pct-row">行占比 %</div>
+                <div class="view-tab" data-mode="pct-col">列占比 %</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span id="tableTitle">订单数量分布 · 按月份 × 金额区间</span>
+            <span class="card-title-info" id="tableSubtitle">数值模式</span>
+        </div>
+        <div class="table-scroll">
+            <table id="mainTable">
+                <thead><tr id="tableHead"></tr></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color" style="background:#dcfce7"></div>低占比</div>
+            <div class="legend-item"><div class="legend-color" style="background:#86efac"></div></div>
+            <div class="legend-item"><div class="legend-color" style="background:#4ade80"></div></div>
+            <div class="legend-item"><div class="legend-color" style="background:#22c55e"></div>高占比</div>
+            <span style="color:#999;margin-left:8px;">| 颜色深浅表示该单元格在行/列中的相对占比</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">区间汇总统计</div>
+        <div class="table-scroll">
+            <table id="summaryTable">
+                <thead><tr id="summaryHead"></tr></thead>
+                <tbody id="summaryBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const data = window.__REVENUE_DATA__;
+    let currentView = 'orders';
+    let currentMode = 'value';
+
+    const rangeColors = ['#ef4444','#f97316','#eab308','#3b82f6','#8b5cf6','#ec4899','#10b981'];
+
+    function getCellData(month, range) {
+        if (currentView === 'orders') {
+            return data.orderCounts[month][range] || 0;
+        } else {
+            return data.revenues[month][range] || 0;
+        }
+    }
+
+    function formatNumber(num) {
+        if (currentView === 'orders') {
+            return num.toLocaleString();
+        } else {
+            if (Math.abs(num) >= 1000) {
+                return '$' + (num / 1000).toFixed(1) + 'k';
+            }
+            return '$' + num.toFixed(0);
+        }
+    }
+
+    function getRowTotal(month) {
+        let total = 0;
+        for (const r of data.ranges) {
+            total += getCellData(month, r);
+        }
+        return total;
+    }
+
+    function getColTotal(range) {
+        let total = 0;
+        for (const m of data.months) {
+            total += getCellData(m, range);
+        }
+        return total;
+    }
+
+    function getGrandTotal() {
+        let total = 0;
+        for (const m of data.months) {
+            total += getRowTotal(m);
+        }
+        return total;
+    }
+
+    function getHeatColor(value, maxVal) {
+        if (maxVal === 0) return 'transparent';
+        const ratio = value / maxVal;
+        // 从浅绿到深绿
+        const r = Math.round(220 - ratio * 180);
+        const g = Math.round(252 - ratio * 80);
+        const b = Math.round(231 - ratio * 150);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function getPctColor(pct) {
+        // 从浅绿到深绿
+        const r = Math.round(220 - pct * 180);
+        const g = Math.round(252 - ratio * 80);
+        const b = Math.round(231 - ratio * 150);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function renderTable() {
+        const head = document.getElementById('tableHead');
+        const body = document.getElementById('tableBody');
+
+        // Header
+        let headHTML = '<th>月份</th>';
+        for (let i = 0; i < data.ranges.length; i++) {
+            headHTML += `<th class="range-col" style="color:${rangeColors[i]}">${data.ranges[i]}</th>`;
+        }
+        headHTML += '<th class="total-col">合计</th>';
+        head.innerHTML = headHTML;
+
+        // 计算最大值用于热力图
+        let maxVal = 0;
+        if (currentMode !== 'value') {
+            for (const m of data.months) {
+                for (const r of data.ranges) {
+                    const val = Math.abs(getCellData(m, r));
+                    if (val > maxVal) maxVal = val;
+                }
+            }
+        }
+
+        // Body
+        let bodyHTML = '';
+        const grandTotal = getGrandTotal();
+
+        for (const month of data.months) {
+            const rowTotal = getRowTotal(month);
+            bodyHTML += '<tr>';
+            bodyHTML += `<td>${month}</td>`;
+
+            for (let i = 0; i < data.ranges.length; i++) {
+                const range = data.ranges[i];
+                const val = getCellData(month, range);
+                const colTotal = getColTotal(range);
+
+                let displayVal, pct, pctLabel;
+
+                if (currentMode === 'value') {
+                    displayVal = formatNumber(val);
+                    pct = rowTotal > 0 ? (val / rowTotal * 100).toFixed(1) : '0.0';
+                    pctLabel = `${pct}%`;
+                } else if (currentMode === 'pct-row') {
+                    displayVal = rowTotal > 0 ? (val / rowTotal * 100).toFixed(1) + '%' : '0.0%';
+                    pct = rowTotal > 0 ? Math.abs(val / rowTotal * 100) : 0;
+                    pctLabel = formatNumber(val);
+                } else {
+                    displayVal = colTotal > 0 ? (val / colTotal * 100).toFixed(1) + '%' : '0.0%';
+                    pct = colTotal > 0 ? Math.abs(val / colTotal * 100) : 0;
+                    pctLabel = formatNumber(val);
+                }
+
+                const absVal = Math.abs(val);
+                const heatRatio = maxVal > 0 ? absVal / maxVal : 0;
+                const bgColor = currentMode === 'value'
+                    ? (heatRatio > 0 ? `rgba(34, 197, 94, ${0.05 + heatRatio * 0.25})` : 'transparent')
+                    : (heatRatio > 0 ? `rgba(34, 197, 94, ${0.05 + heatRatio * 0.25})` : 'transparent');
+
+                const barWidth = heatRatio * 100;
+                const barColor = rangeColors[i];
+
+                bodyHTML += `<td style="background:${bgColor}">`;
+                bodyHTML += `<div class="cell-value">${displayVal}</div>`;
+                bodyHTML += `<div class="cell-pct">${pctLabel}</div>`;
+                bodyHTML += `<div class="cell-bar" style="width:${barWidth}%;background:${barColor}"></div>`;
+                bodyHTML += `</td>`;
+            }
+
+            // Row total
+            const rowTotalPct = grandTotal > 0 ? (rowTotal / grandTotal * 100).toFixed(1) : '0.0';
+            bodyHTML += `<td class="total-cell">`;
+            bodyHTML += `<div class="cell-value">${formatNumber(rowTotal)}</div>`;
+            bodyHTML += `<div class="cell-pct">${rowTotalPct}%</div>`;
+            bodyHTML += `</td>`;
+
+            bodyHTML += '</tr>';
+        }
+
+        // Grand total row
+        bodyHTML += '<tr class="summary-row">';
+        bodyHTML += '<td>合计</td>';
+        for (const range of data.ranges) {
+            const colTotal = getColTotal(range);
+            const colPct = grandTotal > 0 ? (colTotal / grandTotal * 100).toFixed(1) : '0.0';
+            bodyHTML += `<td class="grand-total-cell">`;
+            bodyHTML += `<div class="cell-value">${formatNumber(colTotal)}</div>`;
+            bodyHTML += `<div class="cell-pct">${colPct}%</div>`;
+            bodyHTML += `</td>`;
+        }
+        bodyHTML += `<td class="grand-total">${formatNumber(grandTotal)}</td>`;
+        bodyHTML += '</tr>';
+
+        body.innerHTML = bodyHTML;
+
+        // Update titles
+        document.getElementById('tableTitle').textContent =
+            currentView === 'orders'
+                ? `订单数量分布 · 按月份 × 金额区间`
+                : `收入金额分布 · 按月份 × 金额区间`;
+
+        const modeLabels = { 'value': '数值模式', 'pct-row': '行占比模式', 'pct-col': '列占比模式' };
+        document.getElementById('tableSubtitle').textContent = modeLabels[currentMode];
+    }
+
+    function renderSummary() {
+        const head = document.getElementById('summaryHead');
+        const body = document.getElementById('summaryBody');
+
+        head.innerHTML = '<th>金额区间</th><th>订单数</th><th>占比</th><th>收入金额</th><th>占比</th><th>平均客单价</th>';
+
+        let totalOrders = 0;
+        let totalRevenue = 0;
+        for (const m of data.months) {
+            for (const r of data.ranges) {
+                totalOrders += data.orderCounts[m][r] || 0;
+                totalRevenue += data.revenues[m][r] || 0;
+            }
+        }
+
+        let bodyHTML = '';
+        for (let i = 0; i < data.ranges.length; i++) {
+            const range = data.ranges[i];
+            const orders = getColTotal(range);
+            const revenue = (() => {
+                let t = 0;
+                for (const m of data.months) t += data.revenues[m][range] || 0;
+                return t;
+            })();
+            const avg = orders > 0 ? revenue / orders : 0;
+
+            const orderPct = totalOrders > 0 ? (orders / totalOrders * 100).toFixed(1) : '0.0';
+            const revPct = totalRevenue > 0 ? (revenue / totalRevenue * 100).toFixed(1) : '0.0';
+
+            bodyHTML += '<tr>';
+            bodyHTML += `<td style="font-weight:600;color:${rangeColors[i]}">${range}</td>`;
+            bodyHTML += `<td>${orders.toLocaleString()}</td>`;
+            bodyHTML += `<td>${orderPct}%</td>`;
+            bodyHTML += `<td style="color:${revenue >= 0 ? '#059669' : '#dc2626'}">$${revenue.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>`;
+            bodyHTML += `<td>${revPct}%</td>`;
+            bodyHTML += `<td>$${avg.toFixed(2)}</td>`;
+            bodyHTML += '</tr>';
+        }
+
+        // Total row
+        const avgTotal = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+        bodyHTML += '<tr class="summary-row">';
+        bodyHTML += '<td>合计</td>';
+        bodyHTML += `<td>${totalOrders.toLocaleString()}</td>`;
+        bodyHTML += `<td>100%</td>`;
+        bodyHTML += `<td style="color:${totalRevenue >= 0 ? '#059669' : '#dc2626'}">$${totalRevenue.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>`;
+        bodyHTML += `<td>100%</td>`;
+        bodyHTML += `<td>$${avgTotal.toFixed(2)}</td>`;
+        bodyHTML += '</tr>';
+
+        body.innerHTML = bodyHTML;
+    }
+
+    // Event handlers
+    document.querySelectorAll('[data-view]').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('[data-view]').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentView = tab.dataset.view;
+            renderTable();
+        });
+    });
+
+    document.querySelectorAll('[data-mode]').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('[data-mode]').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentMode = tab.dataset.mode;
+            renderTable();
+        });
+    });
+
+    // Initial render
+    renderTable();
+    renderSummary();
+</script>
+</body>
+</html>
