@@ -112,7 +112,8 @@ def load_orders_all():
     for filepath in files:
         orders_path = Path(filepath)
         print(f"📦 读取订单文件: {orders_path.name}")
-        with open(orders_path, 'r', encoding='utf-8') as f:
+        # 使用 utf-8-sig 自动处理 BOM，兼容 Excel/Numbers 导出的 CSV
+        with open(orders_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 orders.append(row)
@@ -120,8 +121,11 @@ def load_orders_all():
     print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
     return orders
 
+# 全局缓存：row id → normalized keys 映射
+_field_cache = {}
+
 def get_field(row, field, default=''):
-    """兼容中英文字段名"""
+    """兼容中英文字段名，自动处理 BOM、空格、大小写"""
     mapping = {
         'Order name': '订单名称',
         'Product title': '产品标题',
@@ -132,16 +136,27 @@ def get_field(row, field, default=''):
         'Total sales': '总销售额'
     }
 
-    # 先尝试直接获取
+    # 构建标准化的字段名查找表（去空格、去 BOM、转小写）
+    row_id = id(row)
+    if row_id not in _field_cache:
+        _field_cache[row_id] = {k.strip().strip('\ufeff').lower(): k for k in row.keys()}
+    normalized_keys = _field_cache[row_id]
+
+    # 1. 精确匹配
     if field in row:
         return row.get(field, default)
 
-    # 再尝试映射后的中文名
+    # 2. 标准化匹配（去空格、去 BOM、忽略大小写）
+    normalized_field = field.strip().strip('\ufeff').lower()
+    if normalized_field in normalized_keys:
+        return row.get(normalized_keys[normalized_field], default)
+
+    # 3. 映射后的中文名匹配
     cn_field = mapping.get(field, field)
     if cn_field in row:
         return row.get(cn_field, default)
 
-    # 兼容旧字段名（月→天）
+    # 4. 兼容旧字段名（月→天）
     fallback = {'天': '月', '月': '天'}
     if cn_field in fallback and fallback[cn_field] in row:
         return row.get(fallback[cn_field], default)
