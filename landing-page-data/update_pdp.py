@@ -163,10 +163,10 @@ def calc_trend(wv):
 
 
 def step1_read_ecommerce():
-    """步骤1: 读取电子商务购买数据"""
+    """步骤1: 读取电子商务购买数据（按产品代码聚合变体）"""
     print("📦 读取电子商务购买数据...")
     n_weeks = len(WEEKS)
-    products = {}
+    raw_products = {}
 
     for wi, (wname, suffix, _) in enumerate(WEEKS):
         fname = os.path.join(PAGEVIEWS_DIR, f'电子商务购买_商品名称{suffix}.csv')
@@ -179,26 +179,62 @@ def step1_read_ecommerce():
             name = row.get('商品名称', '').strip()
             if not name:
                 continue
-            if name not in products:
-                products[name] = {
-                    'name': name,
+            # 提取产品代码
+            code, cat, first = get_code_and_cat(name)
+            if not code:
+                code = name  # fallback: 无代码的产品用名称作为key
+
+            if code not in raw_products:
+                raw_products[code] = {
+                    'names': [],  # 收集所有变体名称
+                    'code': code,
+                    'category': cat,
+                    'firstChar': first,
                     'weeklyViews': [0] * n_weeks, 'weeklyUsers': [0] * n_weeks,
                     'weeklyCarts': [0] * n_weeks, 'weeklyPurchased': [0] * n_weeks,
                     'weeklyRevenue': [0.0] * n_weeks, 'weeklyBounce': [0.0] * n_weeks,
                     'weeklyCheckouts': [0] * n_weeks,
+                    'weeklyBounceWeight': [0] * n_weeks,  # 用于加权平均跳出率
                 }
-            p = products[name]
-            p['weeklyViews'][wi] = int(row.get('查看过的商品数', 0))
-            p['weeklyUsers'][wi] = int(row.get('活跃用户', 0))
-            p['weeklyCarts'][wi] = int(row.get('加入购物车的商品数', 0))
-            p['weeklyPurchased'][wi] = int(row.get('已购买的商品数', 0))
-            p['weeklyRevenue'][wi] = float(row.get('商品收入', 0))
-            p['weeklyBounce'][wi] = round(float(row.get('跳出率', 0)) * 100, 1)
-            p['weeklyCheckouts'][wi] = int(row.get('结账的商品数', 0))
+
+            p = raw_products[code]
+            p['names'].append(name)
+
+            views = int(row.get('查看过的商品数', 0))
+            p['weeklyViews'][wi] += views
+            p['weeklyUsers'][wi] += int(row.get('活跃用户', 0))
+            p['weeklyCarts'][wi] += int(row.get('加入购物车的商品数', 0))
+            p['weeklyPurchased'][wi] += int(row.get('已购买的商品数', 0))
+            p['weeklyRevenue'][wi] += float(row.get('商品收入', 0))
+            p['weeklyCheckouts'][wi] += int(row.get('结账的商品数', 0))
+            # 跳出率加权累加
+            p['weeklyBounce'][wi] += round(float(row.get('跳出率', 0)) * 100, 1) * views
+            p['weeklyBounceWeight'][wi] += views
             count += 1
         print(f"  ✓ {wname}: {count} 产品")
 
-    print(f"  合计: {len(products)} 个唯一产品")
+    # 转换为最终产品格式
+    products = {}
+    for code, p in raw_products.items():
+        # 计算加权平均跳出率
+        for wi in range(n_weeks):
+            if p['weeklyBounceWeight'][wi] > 0:
+                p['weeklyBounce'][wi] = round(p['weeklyBounce'][wi] / p['weeklyBounceWeight'][wi], 1)
+            else:
+                p['weeklyBounce'][wi] = 0.0
+
+        # 选择最佳名称：保留最长名称（通常最完整）
+        all_names = list(set(p['names']))
+        best_name = max(all_names, key=len) if all_names else code
+
+        # 清理临时字段
+        del p['names']
+        del p['weeklyBounceWeight']
+
+        products[code] = p
+        products[code]['name'] = best_name
+
+    print(f"  原始产品: {count} 个, 聚合后: {len(products)} 个唯一产品")
     return products
 
 
@@ -207,11 +243,10 @@ def step2_classify_and_rank(products):
     print("📊 计算排名和趋势...")
     n_weeks = len(WEEKS)
 
-    for name, p in products.items():
-        code, cat, first = get_code_and_cat(name)
-        p['code'] = code
-        p['category'] = cat
-        p['firstChar'] = first
+    for code, p in products.items():
+        # code, cat, first 已经在 step1 中设置
+        cat = p['category']
+        first = p['firstChar']
         p['totalViews'] = sum(p['weeklyViews'])
         p['totalUsers'] = sum(p['weeklyUsers'])
         p['totalCarts'] = sum(p['weeklyCarts'])
@@ -283,20 +318,20 @@ def step2_classify_and_rank(products):
         p['prefixTotal'] = len(prefix_groups.get(p['category'], []))
 
     # Select needed products (overall top50 + per-category top50)
-    needed = set(p['name'] for p in all_sorted[:50])
+    needed = set(p['code'] for p in all_sorted[:50])
     active_categories = []
     for cat, prods in cat_products.items():
         if len(prods) >= 3:
             active_categories.append(cat)
             for p in prods[:50]:
-                needed.add(p['name'])
+                needed.add(p['code'])
 
     print(f"  ✓ 总榜 Top50 + {len(active_categories)} 个类别 = {len(needed)} 个产品")
     return all_sorted, cat_products, needed, active_categories, prefixBench
 
 
 def step3_match_orders(products, needed):
-    """步骤3: 匹配订单收入"""
+    """步骤3: 匹配订单收入（按产品代码聚合）"""
     orders_file = find_orders_file()
     if not orders_file:
         return
@@ -304,28 +339,19 @@ def step3_match_orders(products, needed):
     print(f"💰 匹配订单收入: {os.path.basename(orders_file)}")
     n_weeks = len(WEEKS)
 
-    code_to_names = defaultdict(list)
-    for n in needed:
-        p = products[n]
-        if p.get('code'):
-            code_to_names[p['code']].append(n)
-
     def extract_code(title):
         m = re.match(r'^([A-Za-z]\d+)', title.strip())
         return m.group(1).lower() if m else None
 
-    def match_name(order_title):
-        code = extract_code(order_title)
-        if not code: return None
-        cands = code_to_names.get(code, [])
-        return cands[0] if cands else None
+    def match_code(order_title):
+        return extract_code(order_title)
 
     with open(orders_file, 'r', encoding='utf-8-sig') as f:
         raw_rows = list(csv.DictReader(f))
 
     seen = set()
-    name_weekly_rev = defaultdict(lambda: [0.0] * n_weeks)
-    name_week_orders = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+    code_weekly_rev = defaultdict(lambda: [0.0] * n_weeks)
+    code_week_orders = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
 
     for r in raw_rows:
         title = get_field(r, '产品标题')
@@ -340,20 +366,20 @@ def step3_match_orders(products, needed):
         if wi < 0:
             continue
         net = float(get_field(r, '净销售额').replace(',', ''))
-        name = match_name(title)
-        if name and name in needed:
-            name_weekly_rev[name][wi] += net
-            name_week_orders[name][wi][get_field(r, '订单名称')] += net
+        code = match_code(title)
+        if code and code in needed:
+            code_weekly_rev[code][wi] += net
+            code_week_orders[code][wi][get_field(r, '订单名称')] += net
 
     matched = 0
-    for n in needed:
-        p = products[n]
-        if n in name_weekly_rev:
-            p['weeklyRevenue'] = [round(x, 2) for x in name_weekly_rev[n]]
+    for code in needed:
+        p = products[code]
+        if code in code_weekly_rev:
+            p['weeklyRevenue'] = [round(x, 2) for x in code_weekly_rev[code]]
             p['revenue'] = round(sum(p['weeklyRevenue']), 2)
             woc = [0] * n_weeks
             for wi in range(n_weeks):
-                woc[wi] = sum(1 for v in name_week_orders[n][wi].values() if v > 0)
+                woc[wi] = sum(1 for v in code_week_orders[code][wi].values() if v > 0)
             p['weeklyOrderCount'] = woc
             p['orderCount'] = sum(woc)
             matched += 1
