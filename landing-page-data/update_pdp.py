@@ -14,6 +14,30 @@ import csv, json, re, glob, os, sys
 from collections import defaultdict
 from difflib import SequenceMatcher  # noqa: F401 – kept for compatibility
 
+# ── 字段映射（兼容中英文表头 + BOM） ──
+_ORDER_FIELD_MAP = {
+    '产品标题': 'Product title',
+    '订单名称': 'Order name',
+    '天': 'Day',
+    '净销售额': 'Net sales',
+}
+_field_cache = {}
+
+def get_field(row, key):
+    """从 DictReader row 中读取字段，兼容中英文表头。"""
+    rid = id(row)
+    if rid not in _field_cache:
+        _field_cache[rid] = {k.strip().strip('\ufeff').lower(): k for k in row.keys()}
+    norm = _field_cache[rid]
+    # 尝试直接匹配（中文键或英文键）
+    for k in (key, _ORDER_FIELD_MAP.get(key, key)):
+        if k in row:
+            return row[k]
+        kl = k.strip().strip('\ufeff').lower()
+        if kl in norm:
+            return row[norm[kl]]
+    return row.get(key)
+
 # ── 配置 ──
 BASE = os.path.dirname(os.path.abspath(__file__))
 PAGEVIEWS_DIR = os.path.join(BASE, 'pageviews')
@@ -304,21 +328,22 @@ def step3_match_orders(products, needed):
     name_week_orders = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
 
     for r in raw_rows:
-        title = r.get('产品标题', '').strip()
+        title = get_field(r, '产品标题')
+        title = title.strip() if title else ''
         if not title or any(kw in title.lower() for kw in SKIP_ORDER_KW):
             continue
-        key = (r['订单名称'], r['产品标题'], r['天'], r['净销售额'])
+        key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
         if key in seen:
             continue
         seen.add(key)
-        wi = date_to_week(r['天'].strip())
+        wi = date_to_week(get_field(r, '天').strip())
         if wi < 0:
             continue
-        net = float(r['净销售额'].replace(',', ''))
+        net = float(get_field(r, '净销售额').replace(',', ''))
         name = match_name(title)
         if name and name in needed:
             name_weekly_rev[name][wi] += net
-            name_week_orders[name][wi][r['订单名称']] += net
+            name_week_orders[name][wi][get_field(r, '订单名称')] += net
 
     matched = 0
     for n in needed:
@@ -382,16 +407,19 @@ def step3b_category_revenue(orders_file, week_starts=None, week_end=None,
     seen = set()
     with open(orders_file, 'r', encoding='utf-8-sig') as f:
         for r in csv.DictReader(f):
-            title = r.get('产品标题', '').strip()
+            title = get_field(r, '产品标题')
+            title = title.strip() if title else ''
             if not title:
                 continue
             if any(kw in title.lower() for kw in _skip_kw):
                 continue
 
             # 去重：同一订单+产品+日期+金额只算一次
-            day = r.get('天', '').strip()
-            net_str = r.get('净销售额', '0').strip().replace(',', '')
-            key = (r.get('订单名称', ''), title, day, net_str)
+            day = get_field(r, '天')
+            day = day.strip() if day else ''
+            net_str = get_field(r, '净销售额')
+            net_str = net_str.strip().replace(',', '') if net_str else '0'
+            key = (get_field(r, '订单名称'), title, day, net_str)
             if key in seen:
                 continue
             seen.add(key)
@@ -463,14 +491,15 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
         seen = set()
         with open(orders_file, 'r', encoding='utf-8-sig') as f:
             for r in csv.DictReader(f):
-                title = r.get('产品标题', '').strip()
+                title = get_field(r, '产品标题')
+                title = title.strip() if title else ''
                 if not title or any(kw in title.lower() for kw in SKIP_ORDER_KW): continue
-                key = (r['订单名称'], r['产品标题'], r['天'], r['净销售额'])
+                key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
                 if key in seen: continue
                 seen.add(key)
-                wi = date_to_week(r['天'].strip())
+                wi = date_to_week(get_field(r, '天').strip())
                 if wi < 0: continue
-                all_wr[wi] += float(r['净销售额'].replace(',', ''))
+                all_wr[wi] += float(get_field(r, '净销售额').replace(',', ''))
     all_wr = [round(x, 2) for x in all_wr]
 
     top50_output = {
