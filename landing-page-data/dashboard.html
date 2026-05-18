@@ -525,9 +525,16 @@ body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica
             <!-- Filters -->
             <div class="filters-row">
                 <div class="filter-group">
-                    <label class="filter-label">查看周</label>
+                    <label class="filter-label">时间粒度</label>
+                    <select class="filter-select" id="weekGranularity">
+                        <option value="week">按周</option>
+                        <option value="4week">按4周周期</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">查看周期</label>
                     <select class="filter-select" id="weekSelector" style="font-weight:700;color:#2563eb;">
-                        <option value="all">全部 7 周汇总</option>
+                        <option value="all">全部周汇总</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -721,18 +728,56 @@ const data = window.__EMBEDDED_DATA__;
         let filteredData = [];
         let selectedWeekIdx = -1; // -1 = all weeks summary
         let selectedCategory = 'all'; // 'all' = overall top50
+        let weekGranularity = 'week'; // 'week' or '4week'
 
-        // Populate week selector
-        (function initWeekSelector(){
+        // Build 4-week periods from weekStarts (if available)
+        let periods4w = [];
+        if (data.weekStarts) {
+            const ws = data.weekStarts;
+            for (let i = 0; i < data.weeks.length; i += 4) {
+                const endIdx = Math.min(i + 3, data.weeks.length - 1);
+                let sDate = ws[i].replace(/^\d{4}-/, '').replace(/-/g, '/');
+                const eParts = ws[endIdx].split('-');
+                const eDt = new Date(parseInt(eParts[0]), parseInt(eParts[1])-1, parseInt(eParts[2]));
+                eDt.setDate(eDt.getDate() + 6);
+                const eDate = (eDt.getMonth()+1) + '/' + eDt.getDate();
+                const weekCount = endIdx - i + 1;
+                const isFull = weekCount === 4;
+                let label = data.weeks[i] + '–' + data.weeks[endIdx] + ' · ' + sDate + '–' + eDate;
+                if (!isFull) label += ' (不足4周)';
+                periods4w.push({ label, startIdx: i, endIdx, weekCount, isFull });
+            }
+        }
+
+        // Populate week selector based on granularity
+        function populateWeekSelector() {
             const sel = document.getElementById('weekSelector');
-            data.weeks.forEach((w, i) => {
-                const opt = document.createElement('option');
-                opt.value = i;
-                opt.textContent = w + (i === data.weeks.length - 1 ? ' (最新)' : '');
-                sel.appendChild(opt);
-            });
+            sel.innerHTML = '';
+            const oAll = document.createElement('option');
+            oAll.value = 'all';
+            if (weekGranularity === 'week') {
+                oAll.textContent = '全部 ' + data.weeks.length + ' 周汇总';
+                sel.appendChild(oAll);
+                data.weeks.forEach((w, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = w + (i === data.weeks.length - 1 ? ' (最新)' : '');
+                    sel.appendChild(opt);
+                });
+            } else {
+                oAll.textContent = '全部周期汇总';
+                sel.appendChild(oAll);
+                periods4w.forEach((p, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = p.label + (i === periods4w.length - 1 ? ' (最新)' : '');
+                    sel.appendChild(opt);
+                });
+            }
             sel.value = 'all';
-        })();
+            selectedWeekIdx = -1;
+        }
+        populateWeekSelector();
 
         // Populate category tabs
         (function initCategoryTabs(){
@@ -839,6 +884,31 @@ const data = window.__EMBEDDED_DATA__;
             ctx.globalAlpha = 1;
         }
 
+        // Helper: aggregate product data over a range of week indices
+        function aggProductWeeks(p, indices) {
+            let vi=0,us=0,ca=0,co=0,rv=0,boSum=0,boW=0,oc=0;
+            indices.forEach(i => {
+                vi += p.weeklyViews[i]||0;
+                us += p.weeklyUsers[i]||0;
+                ca += p.weeklyCarts[i]||0;
+                co += p.weeklyCheckouts[i]||0;
+                rv += p.weeklyRevenue[i]||0;
+                oc += (p.weeklyOrderCount && p.weeklyOrderCount[i])||0;
+                const bw = p.weeklyViews[i]||0;
+                if (bw > 0) { boSum += (p.weeklyBounce[i]||0)*bw; boW += bw; }
+            });
+            return {vi,us,ca,co,rv,oc,bo:boW>0?boSum/boW:0};
+        }
+
+        function getSelectedWeekIndices() {
+            if (selectedWeekIdx === -1) return null;
+            if (weekGranularity === 'week') return [selectedWeekIdx];
+            const p = periods4w[selectedWeekIdx];
+            const indices = [];
+            for (let j = p.startIdx; j <= p.endIdx; j++) indices.push(j);
+            return indices;
+        }
+
         function applyFilters() {
             const rankBasis = document.getElementById('rankBasis').value;
             const highlight = document.getElementById('highlightFilter').value;
@@ -848,9 +918,13 @@ const data = window.__EMBEDDED_DATA__;
             // selectedCategory is set by tab click
 
             const pool = getProductPool();
+            const selIndices = getSelectedWeekIndices();
 
             filteredData = pool.filter(item => {
-                if (selectedWeekIdx >= 0 && item.weeklyViews[selectedWeekIdx] === 0) return false;
+                if (selIndices) {
+                    const agg = aggProductWeeks(item, selIndices);
+                    if (agg.vi === 0) return false;
+                }
                 if (highlight !== 'all') {
                     if (highlight === 'streak2' && item.streak < 2) return false;
                     if (highlight === 'burst' && item.wow <= 50) return false;
@@ -862,21 +936,18 @@ const data = window.__EMBEDDED_DATA__;
             });
 
             const sortMetric = document.getElementById('sortMetric').value;
-            const wi = selectedWeekIdx;
             filteredData.sort((a, b) => {
-                // 选了某周时，优先用当周数据排序
-                if (wi >= 0) {
+                if (selIndices) {
+                    const aa = aggProductWeeks(a, selIndices);
+                    const bb = aggProductWeeks(b, selIndices);
                     switch (sortMetric) {
                         case 'default':
-                        case 'totalViews':  return (b.weeklyViews[wi]||0) - (a.weeklyViews[wi]||0);
-                        case 'revenue':     return (b.weeklyRevenue[wi]||0) - (a.weeklyRevenue[wi]||0);
-                        case 'carts':       return (b.weeklyCarts[wi]||0) - (a.weeklyCarts[wi]||0);
-                        case 'cartRate': {
-                            const bv = b.weeklyViews[wi]||0, av = a.weeklyViews[wi]||0;
-                            return (bv > 0 ? (b.weeklyCarts[wi]||0)/bv : 0) - (av > 0 ? (a.weeklyCarts[wi]||0)/av : 0);
-                        }
-                        case 'checkouts':   return (b.weeklyCheckouts[wi]||0) - (a.weeklyCheckouts[wi]||0);
-                        case 'bounceRate':  return (a.weeklyBounce[wi]||0) - (b.weeklyBounce[wi]||0);
+                        case 'totalViews':  return bb.vi - aa.vi;
+                        case 'revenue':     return bb.rv - aa.rv;
+                        case 'carts':       return bb.ca - aa.ca;
+                        case 'cartRate':    return (bb.vi > 0 ? bb.ca/bb.vi : 0) - (aa.vi > 0 ? aa.ca/aa.vi : 0);
+                        case 'checkouts':   return bb.co - aa.co;
+                        case 'bounceRate':  return aa.bo - bb.bo;
                         case 'wow':         return (b.wow||0) - (a.wow||0);
                         default: return 0;
                     }
@@ -907,19 +978,28 @@ const data = window.__EMBEDDED_DATA__;
             const catLabel = selectedCategory === 'all' ? 'Top 300' :
                 selectedCategory.toUpperCase() + ' Top ' + pool.length;
             let poolV, allv, poolR, allr, label;
+            const selIndices = getSelectedWeekIndices();
 
-            if (w === -1) {
+            if (!selIndices) {
                 poolV = pool.reduce((s,p) => s + p.totalViews, 0);
                 allv = sm.allWeeklyViews.reduce((a,b)=>a+b,0);
                 poolR = pool.reduce((s,p) => s + (p.revenue||0), 0);
                 allr = sm.allWeeklyRevenue.reduce((a,b)=>a+b,0);
-                label = '7 周汇总';
-            } else {
+                label = data.weeks.length + ' 周汇总';
+            } else if (weekGranularity === 'week') {
                 poolV = pool.reduce((s,p) => s + (p.weeklyViews[w]||0), 0);
                 allv = sm.allWeeklyViews[w];
                 poolR = pool.reduce((s,p) => s + (p.weeklyRevenue[w]||0), 0);
                 allr = sm.allWeeklyRevenue[w];
                 label = data.weeks[w];
+            } else {
+                // 4-week period
+                const p = periods4w[w];
+                poolV = pool.reduce((s,prod) => s + aggProductWeeks(prod, selIndices).vi, 0);
+                allv = sm.allWeeklyViews.slice(p.startIdx, p.endIdx+1).reduce((a,b)=>a+b,0);
+                poolR = pool.reduce((s,prod) => s + aggProductWeeks(prod, selIndices).rv, 0);
+                allr = sm.allWeeklyRevenue.slice(p.startIdx, p.endIdx+1).reduce((a,b)=>a+b,0);
+                label = p.label;
             }
 
             const vPct = allv > 0 ? (poolV / allv * 100) : 0;
@@ -946,21 +1026,31 @@ const data = window.__EMBEDDED_DATA__;
             const title = document.getElementById('tableCardTitle');
             const catInfo = selectedCategory !== 'all' ? data.categories[selectedCategory] : null;
             const catTitle = catInfo ? `${selectedCategory.toUpperCase()} · ${catInfo.name} Top ${Math.min(catInfo.total, 300)}` : 'Top 300 产品排行';
-            if (w === -1) {
+            const selIndices = getSelectedWeekIndices();
+            if (!selIndices) {
                 title.textContent = catTitle;
                 thead.innerHTML = `
                     <th>排名</th><th>变化</th><th>产品</th><th>趋势</th>
-                    <th>7 周走势</th><th>总浏览</th><th>W16</th><th>W15</th>
+                    <th>${data.weeks.length}周走势</th><th>总浏览</th><th>${data.weeks[data.weeks.length-1]}</th><th>${data.weeks[data.weeks.length-2]}</th>
                     <th>周环比</th><th>活跃用户</th><th>跳出率</th>
                     <th>加购</th><th>加购率</th><th>结账</th><th>转化率</th><th>收入</th><th>组内排名</th><th>标签</th>`;
-            } else {
+            } else if (weekGranularity === 'week') {
                 const wk = data.weeks[w];
                 const prevWk = w > 0 ? data.weeks[w-1] : '—';
                 title.textContent = catInfo ? `${selectedCategory.toUpperCase()} · ${catInfo.name} — ${wk} 周报` : `${wk} 周报 · 按浏览量排名`;
                 thead.innerHTML = `
                     <th>${wk}排名</th><th>vs${prevWk}</th><th>产品</th><th>趋势</th>
-                    <th>7 周走势</th><th>${wk}浏览</th><th>${wk}用户</th><th>${wk}跳出</th>
+                    <th>${data.weeks.length}周走势</th><th>${wk}浏览</th><th>${wk}用户</th><th>${wk}跳出</th>
                     <th>环比</th><th>${wk}加购</th><th>加购率</th><th>${wk}结账</th><th>转化率</th><th>${wk}收入</th>
+                    <th>总浏览</th><th>组内排名</th><th>标签</th><th></th>`;
+            } else {
+                const p = periods4w[w];
+                const prevLabel = w > 0 ? periods4w[w-1].label.split(' · ')[0] : '—';
+                title.textContent = catInfo ? `${selectedCategory.toUpperCase()} · ${catInfo.name} — ${p.label}` : `${p.label} · 按浏览量排名`;
+                thead.innerHTML = `
+                    <th>排名</th><th>vs${prevLabel}</th><th>产品</th><th>趋势</th>
+                    <th>${data.weeks.length}周走势</th><th>浏览量</th><th>活跃用户</th><th>跳出率</th>
+                    <th>环比</th><th>加购</th><th>加购率</th><th>结账</th><th>转化率</th><th>收入</th>
                     <th>总浏览</th><th>组内排名</th><th>标签</th><th></th>`;
             }
         }
@@ -969,6 +1059,7 @@ const data = window.__EMBEDDED_DATA__;
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
             const w = selectedWeekIdx;
+            const selIndices = getSelectedWeekIndices();
 
             filteredData.forEach((item, idx) => {
                 const row = document.createElement('tr');
@@ -977,10 +1068,12 @@ const data = window.__EMBEDDED_DATA__;
                 const trendIcon = trendIcons[item.trend] || '➡️';
                 const tagsHtml = item.tags.map(tag => `<span class="tag-badge tag-${tag}">${tag}</span>`).join('');
 
-                // Highlight selected week in sparkline
-                const sparkHighlight = w >= 0 ? w : -1;
+                // Sparkline highlight: single week index, or mid-point of 4-week period
+                let sparkHighlight = -1;
+                if (weekGranularity === 'week' && w >= 0) sparkHighlight = w;
+                else if (weekGranularity === '4week' && w >= 0) sparkHighlight = Math.floor((periods4w[w].startIdx + periods4w[w].endIdx) / 2);
 
-                if (w === -1) {
+                if (!selIndices) {
                     // === SUMMARY MODE (all weeks) ===
                     const displayRank = selectedCategory === 'all' ? item.rank : item.catRank;
                     const deltaClass = item.rankDelta > 0 ? 'up' : item.rankDelta < 0 ? 'down' : item.ranks && item.ranks[item.ranks.length - 2] === null ? 'new' : 'stable';
@@ -994,8 +1087,8 @@ const data = window.__EMBEDDED_DATA__;
                         <td>${trendIcon} ${trendLabels[item.trend]}</td>
                         <td><canvas class="sparkline-canvas" data-values='${JSON.stringify(item.weeklyViews)}' data-prefix='${item.firstChar}' data-hl='${sparkHighlight}'></canvas></td>
                         <td>${item.totalViews}</td>
-                        <td>${item.weeklyViews[6]}</td>
-                        <td>${item.weeklyViews[5]}</td>
+                        <td>${item.weeklyViews[item.weeklyViews.length-1]}</td>
+                        <td>${item.weeklyViews[item.weeklyViews.length-2]}</td>
                         <td><span class="wow-value ${wowClass}">${item.wow > 0 ? '+' : ''}${item.wow.toFixed(1)}%</span></td>
                         <td>${item.users}</td>
                         <td>${item.bounceRate.toFixed(1)}%</td>
@@ -1006,14 +1099,14 @@ const data = window.__EMBEDDED_DATA__;
                         <td>${formatRevenue(item.revenue, item.orderCount)}</td>
                         <td>${item.catRank}/${item.prefixTotal}</td>
                         <td>${tagsHtml}</td>`;
-                } else {
+                } else if (weekGranularity === 'week') {
                     // === SINGLE WEEK MODE ===
                     const weekRank = selectedCategory === 'all' ? item.ranks[w] : item.catRanks[w];
                     const prevRank = w > 0 ? (selectedCategory === 'all' ? item.ranks[w-1] : item.catRanks[w-1]) : null;
                     const displayRank = weekRank != null ? weekRank : '—';
                     let deltaClass = 'stable', deltaText = '—';
                     if (weekRank != null && prevRank != null) {
-                        const d = prevRank - weekRank; // positive = improved
+                        const d = prevRank - weekRank;
                         if (d > 0) { deltaClass = 'up'; deltaText = `↑${d}`; }
                         else if (d < 0) { deltaClass = 'down'; deltaText = `↓${Math.abs(d)}`; }
                     } else if (weekRank != null && prevRank == null) {
@@ -1027,7 +1120,6 @@ const data = window.__EMBEDDED_DATA__;
                     const wCheckouts = item.weeklyCheckouts[w] || 0;
                     const wRevenue = item.weeklyRevenue[w] || 0;
 
-                    // WoW for this specific week
                     let wow = '—', wowClass = '';
                     if (w > 0 && item.weeklyViews[w-1] > 0) {
                         const pct = ((item.weeklyViews[w] - item.weeklyViews[w-1]) / item.weeklyViews[w-1] * 100).toFixed(1);
@@ -1056,6 +1148,49 @@ const data = window.__EMBEDDED_DATA__;
                         <td>${item.catRank}/${item.prefixTotal}</td>
                         <td>${tagsHtml}</td>
                         <td></td>`;
+                } else {
+                    // === 4-WEEK PERIOD MODE ===
+                    const agg = aggProductWeeks(item, selIndices);
+                    const p = periods4w[w];
+                    // compute wow vs previous period
+                    let wow = '—', wowClass = '';
+                    if (w > 0) {
+                        const prevIndices = [];
+                        for (let j = periods4w[w-1].startIdx; j <= periods4w[w-1].endIdx; j++) prevIndices.push(j);
+                        const prevAgg = aggProductWeeks(item, prevIndices);
+                        if (prevAgg.vi > 0) {
+                            const pct = ((agg.vi - prevAgg.vi) / prevAgg.vi * 100).toFixed(1);
+                            wow = (pct > 0 ? '+' : '') + pct + '%';
+                            wowClass = pct >= 0 ? 'wow-positive' : 'wow-negative';
+                        }
+                    }
+                    const rankTop = idx + 1;
+                    const displayRank = rankTop;
+                    let deltaClass = 'stable', deltaText = '—';
+                    // For 4-week mode, simplified delta (show rank in list)
+                    if (w > 0) {
+                        deltaText = '—'; // Could compute period-over-period rank change if needed
+                    }
+
+                    row.innerHTML = `
+                        <td class="rank-cell ${rankTop <= 3 ? 'rank-top3' : rankTop <= 10 ? 'rank-top10' : ''}">${displayRank}</td>
+                        <td><span class="rank-delta ${deltaClass}">${deltaText}</span></td>
+                        <td><div class="handle-cell"><span class="prefix-badge prefix-${prefixClass}" style="background:${prefixColor}">${item.firstChar}</span><span class="handle-text" title="${item.name}">${item.name}</span>${item.streak >= 2 ? `<span class="streak-badge">${item.streak}w连升</span>` : ''}</div></td>
+                        <td>${trendIcon} ${trendLabels[item.trend]}</td>
+                        <td><canvas class="sparkline-canvas" data-values='${JSON.stringify(item.weeklyViews)}' data-prefix='${item.firstChar}' data-hl='${sparkHighlight}'></canvas></td>
+                        <td style="font-weight:700">${agg.vi}</td>
+                        <td>${agg.us}</td>
+                        <td>${agg.bo.toFixed(1)}%</td>
+                        <td><span class="wow-value ${wowClass}">${wow}</span></td>
+                        <td>${agg.ca}</td>
+                        <td>${agg.vi > 0 ? (agg.ca / agg.vi * 100).toFixed(2) + '%' : '—'}</td>
+                        <td>${agg.co}</td>
+                        <td>${agg.vi > 0 && agg.oc > 0 ? (agg.oc / agg.vi * 100).toFixed(2) + '%' : '—'}</td>
+                        <td>${formatRevenue(agg.rv)}</td>
+                        <td style="color:#999">${item.totalViews}</td>
+                        <td>${item.catRank}/${item.prefixTotal}</td>
+                        <td>${tagsHtml}</td>
+                        <td></td>`;
                 }
 
                 tbody.appendChild(row);
@@ -1074,6 +1209,11 @@ const data = window.__EMBEDDED_DATA__;
         document.getElementById('trendFilter').addEventListener('change', applyFilters);
         document.getElementById('weekSelector').addEventListener('change', applyFilters);
         document.getElementById('sortMetric').addEventListener('change', applyFilters);
+        document.getElementById('weekGranularity').addEventListener('change', function() {
+            weekGranularity = this.value;
+            populateWeekSelector();
+            applyFilters();
+        });
 
         applyFilters();
 })();
