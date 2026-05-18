@@ -568,143 +568,44 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
 
 
 def step5_rebuild_dashboard(top50_output, cat_data):
-    """步骤5: 重建合并看板 dashboard.html"""
+    """步骤5: 重建合并看板 dashboard.html
+
+    使用现有的 dashboard.html 作为模板，只替换数据注入部分，
+    保留所有前端功能（包括4周粒度切换等）。
+    """
     print("🔨 重建 dashboard.html...")
 
-    top50_html_path = os.path.join(BASE, 'dashboard_top50.html')
-    with open(top50_html_path, 'r', encoding='utf-8') as f:
-        t = f.read()
-
-    # Re-embed data into dashboard_top50.html first
-    top50_json = json.dumps(top50_output, ensure_ascii=False)
-    t = re.sub(r'window\.__EMBEDDED_DATA__\s*=\s*\{.*?\};',
-               f'window.__EMBEDDED_DATA__ = {top50_json};', t, count=1, flags=re.DOTALL)
-    with open(top50_html_path, 'w', encoding='utf-8') as f:
-        f.write(t)
-
-    # Extract parts
-    css_s = t.index('<style>') + 7
-    css_e = t.index('</style>')
-    top50_css = t[css_s:css_e].replace('body {', '.x-ignore-body {')
-
-    body_s = t.index('<body>') + 6
-    body_e = t.index('</body>')
-    body = t[body_s:body_e]
-
-    data_tag_idx = body.index('<script id="embedded-data">')
-    top50_body = body[:data_tag_idx].strip()
-
-    m = re.search(r'window\.__EMBEDDED_DATA__\s*=\s*(\{.*?\});', body, re.DOTALL)
-    top50_data_str = m.group(1)
-
-    js_s = body.rindex('<script>') + 8
-    js_e = body.rindex('</script>')
-    top50_js = body[js_s:js_e].strip()
-
-    cat_data_str = json.dumps(cat_data, ensure_ascii=False)
-
-    # Read the build template
-    template_path = os.path.join(BASE, 'dashboard_template.html')
-    if not os.path.exists(template_path):
-        # Build inline
-        pass
-
-    # Write merged dashboard.html using the same structure as before
     out_path = os.path.join(BASE, 'dashboard.html')
-    with open(out_path, 'w', encoding='utf-8') as out:
-        out.write('<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n')
-        out.write('<meta name="viewport" content="width=device-width, initial-scale=1.0">\n')
-        out.write('<title>LinkDolls 数据看板</title>\n<style>\n')
-        out.write('* { margin:0; padding:0; box-sizing:border-box; }\n')
-        out.write('body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:#f5f5f5; color:#333; display:flex; min-height:100vh; }\n')
-        out.write('.sidebar { width:220px; background:#1e293b; color:white; flex-shrink:0; position:fixed; top:0; left:0; bottom:0; z-index:100; display:flex; flex-direction:column; }\n')
-        out.write('.sidebar-logo { padding:24px 20px 20px; font-size:18px; font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }\n')
-        out.write('.sidebar-logo span { color:#60a5fa; }\n')
-        out.write('.sidebar-nav { padding:12px 0; flex:1; }\n')
-        out.write('.nav-section { padding:12px 20px 4px; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#64748b; font-weight:600; }\n')
-        out.write('.nav-item { display:flex; align-items:center; gap:10px; padding:10px 20px; cursor:pointer; color:#94a3b8; font-size:14px; transition:all 0.15s; border-left:3px solid transparent; }\n')
-        out.write('.nav-item:hover { background:rgba(255,255,255,0.05); color:#e2e8f0; }\n')
-        out.write('.nav-item.active { background:rgba(59,130,246,0.15); color:#93c5fd; border-left-color:#3b82f6; font-weight:600; }\n')
-        out.write('.nav-icon { font-size:18px; width:24px; text-align:center; }\n')
-        out.write('.sidebar-footer { padding:16px 20px; font-size:11px; color:#475569; border-top:1px solid rgba(255,255,255,0.1); }\n')
-        out.write('.main-content { margin-left:220px; flex:1; min-width:0; }\n')
-        out.write('.page { display:none; }\n.page.active { display:block; }\n')
-        out.write('#page-category .card { background:white; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px; overflow:hidden; }\n')
-        out.write('#page-category .card-title { padding:16px 20px; font-size:16px; font-weight:700; border-bottom:1px solid #f0f0f0; }\n')
-        out.write('#page-category .cat-badge { display:inline-block; width:24px; height:24px; border-radius:50%; color:white; font-weight:700; font-size:12px; text-align:center; line-height:24px; margin-right:6px; }\n')
-        out.write('#page-category .cat-name-col { font-weight:600; color:#1a1a1a; }\n')
-        out.write('#page-category .bar-cell { min-width:120px; }\n')
-        out.write('#page-category .bar-bg { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; margin-top:2px; }\n')
-        out.write('#page-category .bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }\n')
-        out.write('#page-category .cat-sparkline { width:100px; height:28px; }\n')
-        out.write('#page-category .totals-row td { font-weight:700; background:#f8fafc; border-top:2px solid #e5e7eb; }\n')
-        out.write('#page-category .cat-filters { background:white; padding:16px 24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); display:flex; gap:20px; align-items:center; }\n')
-        out.write('#page-category .cat-filter-label { font-size:12px; color:#888; margin-bottom:4px; }\n')
-        out.write('#page-category table { width:100%; border-collapse:collapse; font-size:13px; }\n')
-        out.write('#page-category th { background:#fafafa; padding:10px 14px; text-align:right; font-weight:600; color:#666; border-bottom:2px solid #e5e7eb; white-space:nowrap; }\n')
-        out.write('#page-category th:first-child, #page-category th:nth-child(2) { text-align:left; }\n')
-        out.write('#page-category td { padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:right; white-space:nowrap; }\n')
-        out.write('#page-category td:first-child, #page-category td:nth-child(2) { text-align:left; }\n')
-        out.write('#page-category tr:hover { background:#f8fafc; }\n')
-        out.write(top50_css)
-        out.write('\n</style>\n</head>\n<body>\n')
 
-        # Sidebar
-        out.write('<div class="sidebar">\n<div class="sidebar-logo"><span>LinkDolls</span> 看板</div>\n<div class="sidebar-nav">\n')
-        out.write('<div class="nav-section">详情页 PDP</div>\n')
-        out.write('<div class="nav-item active" data-page="top50"><span class="nav-icon">📊</span><span>Top 300 趋势</span></div>\n')
-        out.write('<div class="nav-item" data-page="category"><span class="nav-icon">📋</span><span>类别横向对比</span></div>\n')
-        out.write('<div class="nav-section">分类页</div>\n')
-        out.write('<a class="nav-item" href="dashboard_collection.html" style="text-decoration:none;"><span class="nav-icon">📈</span><span>分类页数据看板</span></a>\n')
-        out.write('</div>\n<div class="sidebar-footer">W10–W16 数据</div>\n</div>\n')
+    # 1. 尝试读取现有的 dashboard.html 作为模板
+    template_path = os.path.join(BASE, 'dashboard.html')
+    if os.path.exists(template_path):
+        with open(template_path, 'r', encoding='utf-8') as f:
+            html = f.read()
+    else:
+        # fallback: 读取 dashboard_top50.html
+        top50_html_path = os.path.join(BASE, 'dashboard_top50.html')
+        with open(top50_html_path, 'r', encoding='utf-8') as f:
+            html = f.read()
 
-        # Main content
-        out.write('<div class="main-content">\n')
-        out.write(f'<div class="page active" id="page-top50">\n{top50_body}\n</div>\n')
+    top50_json = json.dumps(top50_output, ensure_ascii=False)
+    cat_json = json.dumps(cat_data, ensure_ascii=False)
 
-        # Category page
-        out.write('<div class="page" id="page-category">\n')
-        out.write('<div class="container"><div class="header"><div class="header-title">产品类别横向对比</div>')
-        out.write('<div class="header-subtitle">W10–W16 · 按产品首字母分类对比核心指标</div></div>\n')
-        out.write('<div class="cat-filters"><div><div class="cat-filter-label">时间颗粒度</div>')
-        out.write('<select class="filter-select" id="catGranularitySelector" style="font-weight:700;color:#2563eb;"><option value="week">自然周</option><option value="4week">4周周期</option></select></div>\n')
-        out.write('<div><div class="cat-filter-label">查看周期</div>')
-        out.write('<select class="filter-select" id="catWeekSelector" style="font-weight:700;color:#2563eb;"><option value="all">全部 7 周汇总</option></select></div>\n')
-        out.write('<div><div class="cat-filter-label">排序</div><select class="filter-select" id="catSortSelector">')
-        out.write('<option value="views">按浏览量</option><option value="revenue">按收入</option>')
-        out.write('<option value="cartRate">按加购率</option><option value="convRate">按转化率</option>')
-        out.write('<option value="avgViews">按人均浏览</option><option value="count">按产品数</option>')
-        out.write('</select></div></div>\n')
-        out.write('<div class="card"><div class="card-title" id="catTableTitle">类别横向对比</div>')
-        out.write('<div class="table-scroll"><table><thead><tr id="catTableHead"></tr></thead><tbody id="catTableBody"></tbody></table></div></div>\n')
-        out.write('</div></div>\n')
+    # 2. 替换数据注入部分
+    html = re.sub(
+        r'<script>window\.__EMBEDDED_DATA__\s*=\s*\{.*?\};</script>',
+        f'<script>window.__EMBEDDED_DATA__ = {top50_json};</script>',
+        html, count=1, flags=re.DOTALL
+    )
+    html = re.sub(
+        r'<script>window\.__CAT_DATA__\s*=\s*\{.*?\};</script>',
+        f'<script>window.__CAT_DATA__ = {cat_json};</script>',
+        html, count=1, flags=re.DOTALL
+    )
 
-        out.write('</div>\n')  # close main-content
-
-        # Data
-        out.write(f'<script>window.__EMBEDDED_DATA__ = {top50_data_str};</script>\n')
-        out.write(f'<script>window.__CAT_DATA__ = {cat_data_str};</script>\n')
-
-        # Nav JS
-        out.write('<script>\n')
-        out.write("document.querySelectorAll('.nav-item').forEach(function(item) {\n")
-        out.write("  item.addEventListener('click', function() {\n")
-        out.write("    if (!item.dataset.page) return;\n")
-        out.write("    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });\n")
-        out.write("    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });\n")
-        out.write("    item.classList.add('active');\n")
-        out.write("    document.getElementById('page-' + item.dataset.page).classList.add('active');\n")
-        out.write("  });\n});\n</script>\n")
-
-        # Top50 JS
-        out.write(f'<script>\n(function() {{\n{top50_js}\n}})();\n</script>\n')
-
-        # Category JS (inline)
-        cat_js_file = os.path.join(BASE, 'category_render.js')
-        cat_js = _build_category_js()
-        out.write(f'<script>\n{cat_js}\n</script>\n')
-
-        out.write('</body>\n</html>')
+    # 3. 写入输出
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(html)
 
     size = os.path.getsize(out_path)
     print(f"  ✓ dashboard.html ({size:,} bytes)")
