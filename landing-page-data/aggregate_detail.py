@@ -108,38 +108,24 @@ def load_orders_all():
         return []
     
     # 读取所有订单文件并合并
-    # 按 (订单名称, 产品标题) 去重，优先保留 Order tag 为 /collections/ 的行
-    # 因为 Shopify 导出中同一订单-产品可能因多 tag 重复，需要选最有用的 tag
     orders = []
-    seen_keys = {}  # key -> row index in orders
     for filepath in files:
         orders_path = Path(filepath)
         print(f"📦 读取订单文件: {orders_path.name}")
-        with open(orders_path, 'r', encoding='utf-8') as f:
+        # 使用 utf-8-sig 自动处理 BOM，兼容 Excel/Numbers 导出的 CSV
+        with open(orders_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                order_name = row.get('订单名称', row.get('Order name', ''))
-                product_title = row.get('产品标题', row.get('Product title', ''))
-                dedup_key = (order_name, product_title)
-                tag = row.get('订单标记', row.get('Order tag', '')).strip()
-                norm_tag = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', tag)
-                
-                if dedup_key not in seen_keys:
-                    seen_keys[dedup_key] = len(orders)
-                    orders.append(row)
-                else:
-                    # 已存在，如果新行的 tag 是 /collections/ 而旧行不是，替换
-                    old_idx = seen_keys[dedup_key]
-                    old_tag = orders[old_idx].get('订单标记', orders[old_idx].get('Order tag', '')).strip()
-                    old_norm = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', old_tag)
-                    if norm_tag.startswith('/collections/') and not old_norm.startswith('/collections/'):
-                        orders[old_idx] = row
+                orders.append(row)
     
-    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件，已去重，/collections/ tag 优先）")
+    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
     return orders
 
+# 全局缓存：row id → normalized keys 映射
+_field_cache = {}
+
 def get_field(row, field, default=''):
-    """兼容中英文字段名"""
+    """兼容中英文字段名，自动处理 BOM、空格、大小写"""
     mapping = {
         'Order name': '订单名称',
         'Product title': '产品标题',
@@ -150,16 +136,27 @@ def get_field(row, field, default=''):
         'Total sales': '总销售额'
     }
 
-    # 先尝试直接获取
+    # 构建标准化的字段名查找表（去空格、去 BOM、转小写）
+    row_id = id(row)
+    if row_id not in _field_cache:
+        _field_cache[row_id] = {k.strip().strip('\ufeff').lower(): k for k in row.keys()}
+    normalized_keys = _field_cache[row_id]
+
+    # 1. 精确匹配
     if field in row:
         return row.get(field, default)
 
-    # 再尝试映射后的中文名
+    # 2. 标准化匹配（去空格、去 BOM、忽略大小写）
+    normalized_field = field.strip().strip('\ufeff').lower()
+    if normalized_field in normalized_keys:
+        return row.get(normalized_keys[normalized_field], default)
+
+    # 3. 映射后的中文名匹配
     cn_field = mapping.get(field, field)
     if cn_field in row:
         return row.get(cn_field, default)
 
-    # 兼容旧字段名（月→天）
+    # 4. 兼容旧字段名（月→天）
     fallback = {'天': '月', '月': '天'}
     if cn_field in fallback and fallback[cn_field] in row:
         return row.get(fallback[cn_field], default)
@@ -230,8 +227,7 @@ def calculate_revenue_by_category(orders_all, category):
         
         monthly_sales = defaultdict(float)
         for o in q_orders:
-            day_raw = get_field(o, 'Day', '').strip()
-            day = normalize_date(day_raw)
+            day = get_field(o, 'Day', '').strip()
             if len(day) >= 7:
                 month = day[5:7]
                 monthly_sales[month] += float(get_field(o, 'Net sales', 0) or 0)

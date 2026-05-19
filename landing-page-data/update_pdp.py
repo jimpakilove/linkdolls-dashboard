@@ -14,6 +14,30 @@ import csv, json, re, glob, os, sys
 from collections import defaultdict
 from difflib import SequenceMatcher  # noqa: F401 – kept for compatibility
 
+# ── 字段映射（兼容中英文表头 + BOM） ──
+_ORDER_FIELD_MAP = {
+    '产品标题': 'Product title',
+    '订单名称': 'Order name',
+    '天': 'Day',
+    '净销售额': 'Net sales',
+}
+_field_cache = {}
+
+def get_field(row, key):
+    """从 DictReader row 中读取字段，兼容中英文表头。"""
+    rid = id(row)
+    if rid not in _field_cache:
+        _field_cache[rid] = {k.strip().strip('\ufeff').lower(): k for k in row.keys()}
+    norm = _field_cache[rid]
+    # 尝试直接匹配（中文键或英文键）
+    for k in (key, _ORDER_FIELD_MAP.get(key, key)):
+        if k in row:
+            return row[k]
+        kl = k.strip().strip('\ufeff').lower()
+        if kl in norm:
+            return row[norm[kl]]
+    return row.get(key)
+
 # ── 配置 ──
 BASE = os.path.dirname(os.path.abspath(__file__))
 PAGEVIEWS_DIR = os.path.join(BASE, 'pageviews')
@@ -139,10 +163,10 @@ def calc_trend(wv):
 
 
 def step1_read_ecommerce():
-    """步骤1: 读取电子商务购买数据"""
+    """步骤1: 读取电子商务购买数据（按产品代码聚合变体）"""
     print("📦 读取电子商务购买数据...")
     n_weeks = len(WEEKS)
-    products = {}
+    raw_products = {}
 
     for wi, (wname, suffix, _) in enumerate(WEEKS):
         fname = os.path.join(PAGEVIEWS_DIR, f'电子商务购买_商品名称{suffix}.csv')
@@ -155,26 +179,62 @@ def step1_read_ecommerce():
             name = row.get('商品名称', '').strip()
             if not name:
                 continue
-            if name not in products:
-                products[name] = {
-                    'name': name,
+            # 提取产品代码
+            code, cat, first = get_code_and_cat(name)
+            if not code:
+                code = name  # fallback: 无代码的产品用名称作为key
+
+            if code not in raw_products:
+                raw_products[code] = {
+                    'names': [],  # 收集所有变体名称
+                    'code': code,
+                    'category': cat,
+                    'firstChar': first,
                     'weeklyViews': [0] * n_weeks, 'weeklyUsers': [0] * n_weeks,
                     'weeklyCarts': [0] * n_weeks, 'weeklyPurchased': [0] * n_weeks,
                     'weeklyRevenue': [0.0] * n_weeks, 'weeklyBounce': [0.0] * n_weeks,
                     'weeklyCheckouts': [0] * n_weeks,
+                    'weeklyBounceWeight': [0] * n_weeks,  # 用于加权平均跳出率
                 }
-            p = products[name]
-            p['weeklyViews'][wi] = int(row.get('查看过的商品数', 0))
-            p['weeklyUsers'][wi] = int(row.get('活跃用户', 0))
-            p['weeklyCarts'][wi] = int(row.get('加入购物车的商品数', 0))
-            p['weeklyPurchased'][wi] = int(row.get('已购买的商品数', 0))
-            p['weeklyRevenue'][wi] = float(row.get('商品收入', 0))
-            p['weeklyBounce'][wi] = round(float(row.get('跳出率', 0)) * 100, 1)
-            p['weeklyCheckouts'][wi] = int(row.get('结账的商品数', 0))
+
+            p = raw_products[code]
+            p['names'].append(name)
+
+            views = int(row.get('查看过的商品数', 0))
+            p['weeklyViews'][wi] += views
+            p['weeklyUsers'][wi] += int(row.get('活跃用户', 0))
+            p['weeklyCarts'][wi] += int(row.get('加入购物车的商品数', 0))
+            p['weeklyPurchased'][wi] += int(row.get('已购买的商品数', 0))
+            p['weeklyRevenue'][wi] += float(row.get('商品收入', 0))
+            p['weeklyCheckouts'][wi] += int(row.get('结账的商品数', 0))
+            # 跳出率加权累加
+            p['weeklyBounce'][wi] += round(float(row.get('跳出率', 0)) * 100, 1) * views
+            p['weeklyBounceWeight'][wi] += views
             count += 1
         print(f"  ✓ {wname}: {count} 产品")
 
-    print(f"  合计: {len(products)} 个唯一产品")
+    # 转换为最终产品格式
+    products = {}
+    for code, p in raw_products.items():
+        # 计算加权平均跳出率
+        for wi in range(n_weeks):
+            if p['weeklyBounceWeight'][wi] > 0:
+                p['weeklyBounce'][wi] = round(p['weeklyBounce'][wi] / p['weeklyBounceWeight'][wi], 1)
+            else:
+                p['weeklyBounce'][wi] = 0.0
+
+        # 选择最佳名称：保留最长名称（通常最完整）
+        all_names = list(set(p['names']))
+        best_name = max(all_names, key=len) if all_names else code
+
+        # 清理临时字段
+        del p['names']
+        del p['weeklyBounceWeight']
+
+        products[code] = p
+        products[code]['name'] = best_name
+
+    print(f"  原始产品: {count} 个, 聚合后: {len(products)} 个唯一产品")
     return products
 
 
@@ -183,11 +243,10 @@ def step2_classify_and_rank(products):
     print("📊 计算排名和趋势...")
     n_weeks = len(WEEKS)
 
-    for name, p in products.items():
-        code, cat, first = get_code_and_cat(name)
-        p['code'] = code
-        p['category'] = cat
-        p['firstChar'] = first
+    for code, p in products.items():
+        # code, cat, first 已经在 step1 中设置
+        cat = p['category']
+        first = p['firstChar']
         p['totalViews'] = sum(p['weeklyViews'])
         p['totalUsers'] = sum(p['weeklyUsers'])
         p['totalCarts'] = sum(p['weeklyCarts'])
@@ -259,20 +318,20 @@ def step2_classify_and_rank(products):
         p['prefixTotal'] = len(prefix_groups.get(p['category'], []))
 
     # Select needed products (overall top50 + per-category top50)
-    needed = set(p['name'] for p in all_sorted[:50])
+    needed = set(p['code'] for p in all_sorted[:50])
     active_categories = []
     for cat, prods in cat_products.items():
         if len(prods) >= 3:
             active_categories.append(cat)
             for p in prods[:50]:
-                needed.add(p['name'])
+                needed.add(p['code'])
 
     print(f"  ✓ 总榜 Top50 + {len(active_categories)} 个类别 = {len(needed)} 个产品")
     return all_sorted, cat_products, needed, active_categories, prefixBench
 
 
 def step3_match_orders(products, needed):
-    """步骤3: 匹配订单收入"""
+    """步骤3: 匹配订单收入（按产品代码聚合）"""
     orders_file = find_orders_file()
     if not orders_file:
         return
@@ -280,55 +339,47 @@ def step3_match_orders(products, needed):
     print(f"💰 匹配订单收入: {os.path.basename(orders_file)}")
     n_weeks = len(WEEKS)
 
-    code_to_names = defaultdict(list)
-    for n in needed:
-        p = products[n]
-        if p.get('code'):
-            code_to_names[p['code']].append(n)
-
     def extract_code(title):
         m = re.match(r'^([A-Za-z]\d+)', title.strip())
         return m.group(1).lower() if m else None
 
-    def match_name(order_title):
-        code = extract_code(order_title)
-        if not code: return None
-        cands = code_to_names.get(code, [])
-        return cands[0] if cands else None
+    def match_code(order_title):
+        return extract_code(order_title)
 
     with open(orders_file, 'r', encoding='utf-8-sig') as f:
         raw_rows = list(csv.DictReader(f))
 
     seen = set()
-    name_weekly_rev = defaultdict(lambda: [0.0] * n_weeks)
-    name_week_orders = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+    code_weekly_rev = defaultdict(lambda: [0.0] * n_weeks)
+    code_week_orders = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
 
     for r in raw_rows:
-        title = r.get('产品标题', '').strip()
+        title = get_field(r, '产品标题')
+        title = title.strip() if title else ''
         if not title or any(kw in title.lower() for kw in SKIP_ORDER_KW):
             continue
-        key = (r['订单名称'], r['产品标题'], r['天'], r['净销售额'])
+        key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
         if key in seen:
             continue
         seen.add(key)
-        wi = date_to_week(r['天'].strip())
+        wi = date_to_week(get_field(r, '天').strip())
         if wi < 0:
             continue
-        net = float(r['净销售额'].replace(',', ''))
-        name = match_name(title)
-        if name and name in needed:
-            name_weekly_rev[name][wi] += net
-            name_week_orders[name][wi][r['订单名称']] += net
+        net = float(get_field(r, '净销售额').replace(',', ''))
+        code = match_code(title)
+        if code and code in needed:
+            code_weekly_rev[code][wi] += net
+            code_week_orders[code][wi][get_field(r, '订单名称')] += net
 
     matched = 0
-    for n in needed:
-        p = products[n]
-        if n in name_weekly_rev:
-            p['weeklyRevenue'] = [round(x, 2) for x in name_weekly_rev[n]]
+    for code in needed:
+        p = products[code]
+        if code in code_weekly_rev:
+            p['weeklyRevenue'] = [round(x, 2) for x in code_weekly_rev[code]]
             p['revenue'] = round(sum(p['weeklyRevenue']), 2)
             woc = [0] * n_weeks
             for wi in range(n_weeks):
-                woc[wi] = sum(1 for v in name_week_orders[n][wi].values() if v > 0)
+                woc[wi] = sum(1 for v in code_week_orders[code][wi].values() if v > 0)
             p['weeklyOrderCount'] = woc
             p['orderCount'] = sum(woc)
             matched += 1
@@ -382,16 +433,19 @@ def step3b_category_revenue(orders_file, week_starts=None, week_end=None,
     seen = set()
     with open(orders_file, 'r', encoding='utf-8-sig') as f:
         for r in csv.DictReader(f):
-            title = r.get('产品标题', '').strip()
+            title = get_field(r, '产品标题')
+            title = title.strip() if title else ''
             if not title:
                 continue
             if any(kw in title.lower() for kw in _skip_kw):
                 continue
 
             # 去重：同一订单+产品+日期+金额只算一次
-            day = r.get('天', '').strip()
-            net_str = r.get('净销售额', '0').strip().replace(',', '')
-            key = (r.get('订单名称', ''), title, day, net_str)
+            day = get_field(r, '天')
+            day = day.strip() if day else ''
+            net_str = get_field(r, '净销售额')
+            net_str = net_str.strip().replace(',', '') if net_str else '0'
+            key = (get_field(r, '订单名称'), title, day, net_str)
             if key in seen:
                 continue
             seen.add(key)
@@ -463,18 +517,20 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
         seen = set()
         with open(orders_file, 'r', encoding='utf-8-sig') as f:
             for r in csv.DictReader(f):
-                title = r.get('产品标题', '').strip()
+                title = get_field(r, '产品标题')
+                title = title.strip() if title else ''
                 if not title or any(kw in title.lower() for kw in SKIP_ORDER_KW): continue
-                key = (r['订单名称'], r['产品标题'], r['天'], r['净销售额'])
+                key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
                 if key in seen: continue
                 seen.add(key)
-                wi = date_to_week(r['天'].strip())
+                wi = date_to_week(get_field(r, '天').strip())
                 if wi < 0: continue
-                all_wr[wi] += float(r['净销售额'].replace(',', ''))
+                all_wr[wi] += float(get_field(r, '净销售额').replace(',', ''))
     all_wr = [round(x, 2) for x in all_wr]
 
     top50_output = {
         'weeks': WEEK_NAMES,
+        'weekStarts': WEEK_STARTS,
         'products': out_products,
         'categories': categories_info,
         'summary': {'allWeeklyViews': all_wv, 'allWeeklyRevenue': all_wr},
@@ -539,143 +595,44 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
 
 
 def step5_rebuild_dashboard(top50_output, cat_data):
-    """步骤5: 重建合并看板 dashboard.html"""
+    """步骤5: 重建合并看板 dashboard.html
+
+    使用现有的 dashboard.html 作为模板，只替换数据注入部分，
+    保留所有前端功能（包括4周粒度切换等）。
+    """
     print("🔨 重建 dashboard.html...")
 
-    top50_html_path = os.path.join(BASE, 'dashboard_top50.html')
-    with open(top50_html_path, 'r', encoding='utf-8') as f:
-        t = f.read()
-
-    # Re-embed data into dashboard_top50.html first
-    top50_json = json.dumps(top50_output, ensure_ascii=False)
-    t = re.sub(r'window\.__EMBEDDED_DATA__\s*=\s*\{.*?\};',
-               f'window.__EMBEDDED_DATA__ = {top50_json};', t, count=1, flags=re.DOTALL)
-    with open(top50_html_path, 'w', encoding='utf-8') as f:
-        f.write(t)
-
-    # Extract parts
-    css_s = t.index('<style>') + 7
-    css_e = t.index('</style>')
-    top50_css = t[css_s:css_e].replace('body {', '.x-ignore-body {')
-
-    body_s = t.index('<body>') + 6
-    body_e = t.index('</body>')
-    body = t[body_s:body_e]
-
-    data_tag_idx = body.index('<script id="embedded-data">')
-    top50_body = body[:data_tag_idx].strip()
-
-    m = re.search(r'window\.__EMBEDDED_DATA__\s*=\s*(\{.*?\});', body, re.DOTALL)
-    top50_data_str = m.group(1)
-
-    js_s = body.rindex('<script>') + 8
-    js_e = body.rindex('</script>')
-    top50_js = body[js_s:js_e].strip()
-
-    cat_data_str = json.dumps(cat_data, ensure_ascii=False)
-
-    # Read the build template
-    template_path = os.path.join(BASE, 'dashboard_template.html')
-    if not os.path.exists(template_path):
-        # Build inline
-        pass
-
-    # Write merged dashboard.html using the same structure as before
     out_path = os.path.join(BASE, 'dashboard.html')
-    with open(out_path, 'w', encoding='utf-8') as out:
-        out.write('<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n')
-        out.write('<meta name="viewport" content="width=device-width, initial-scale=1.0">\n')
-        out.write('<title>LinkDolls 数据看板</title>\n<style>\n')
-        out.write('* { margin:0; padding:0; box-sizing:border-box; }\n')
-        out.write('body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:#f5f5f5; color:#333; display:flex; min-height:100vh; }\n')
-        out.write('.sidebar { width:220px; background:#1e293b; color:white; flex-shrink:0; position:fixed; top:0; left:0; bottom:0; z-index:100; display:flex; flex-direction:column; }\n')
-        out.write('.sidebar-logo { padding:24px 20px 20px; font-size:18px; font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }\n')
-        out.write('.sidebar-logo span { color:#60a5fa; }\n')
-        out.write('.sidebar-nav { padding:12px 0; flex:1; }\n')
-        out.write('.nav-section { padding:12px 20px 4px; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#64748b; font-weight:600; }\n')
-        out.write('.nav-item { display:flex; align-items:center; gap:10px; padding:10px 20px; cursor:pointer; color:#94a3b8; font-size:14px; transition:all 0.15s; border-left:3px solid transparent; }\n')
-        out.write('.nav-item:hover { background:rgba(255,255,255,0.05); color:#e2e8f0; }\n')
-        out.write('.nav-item.active { background:rgba(59,130,246,0.15); color:#93c5fd; border-left-color:#3b82f6; font-weight:600; }\n')
-        out.write('.nav-icon { font-size:18px; width:24px; text-align:center; }\n')
-        out.write('.sidebar-footer { padding:16px 20px; font-size:11px; color:#475569; border-top:1px solid rgba(255,255,255,0.1); }\n')
-        out.write('.main-content { margin-left:220px; flex:1; min-width:0; }\n')
-        out.write('.page { display:none; }\n.page.active { display:block; }\n')
-        out.write('#page-category .card { background:white; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:20px; overflow:hidden; }\n')
-        out.write('#page-category .card-title { padding:16px 20px; font-size:16px; font-weight:700; border-bottom:1px solid #f0f0f0; }\n')
-        out.write('#page-category .cat-badge { display:inline-block; width:24px; height:24px; border-radius:50%; color:white; font-weight:700; font-size:12px; text-align:center; line-height:24px; margin-right:6px; }\n')
-        out.write('#page-category .cat-name-col { font-weight:600; color:#1a1a1a; }\n')
-        out.write('#page-category .bar-cell { min-width:120px; }\n')
-        out.write('#page-category .bar-bg { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; margin-top:2px; }\n')
-        out.write('#page-category .bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }\n')
-        out.write('#page-category .cat-sparkline { width:100px; height:28px; }\n')
-        out.write('#page-category .totals-row td { font-weight:700; background:#f8fafc; border-top:2px solid #e5e7eb; }\n')
-        out.write('#page-category .cat-filters { background:white; padding:16px 24px; border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.1); display:flex; gap:20px; align-items:center; }\n')
-        out.write('#page-category .cat-filter-label { font-size:12px; color:#888; margin-bottom:4px; }\n')
-        out.write('#page-category table { width:100%; border-collapse:collapse; font-size:13px; }\n')
-        out.write('#page-category th { background:#fafafa; padding:10px 14px; text-align:right; font-weight:600; color:#666; border-bottom:2px solid #e5e7eb; white-space:nowrap; }\n')
-        out.write('#page-category th:first-child, #page-category th:nth-child(2) { text-align:left; }\n')
-        out.write('#page-category td { padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:right; white-space:nowrap; }\n')
-        out.write('#page-category td:first-child, #page-category td:nth-child(2) { text-align:left; }\n')
-        out.write('#page-category tr:hover { background:#f8fafc; }\n')
-        out.write(top50_css)
-        out.write('\n</style>\n</head>\n<body>\n')
 
-        # Sidebar
-        out.write('<div class="sidebar">\n<div class="sidebar-logo"><span>LinkDolls</span> 看板</div>\n<div class="sidebar-nav">\n')
-        out.write('<div class="nav-section">详情页 PDP</div>\n')
-        out.write('<div class="nav-item active" data-page="top50"><span class="nav-icon">📊</span><span>Top 300 趋势</span></div>\n')
-        out.write('<div class="nav-item" data-page="category"><span class="nav-icon">📋</span><span>类别横向对比</span></div>\n')
-        out.write('<div class="nav-section">分类页</div>\n')
-        out.write('<a class="nav-item" href="dashboard_collection.html" style="text-decoration:none;"><span class="nav-icon">📈</span><span>分类页数据看板</span></a>\n')
-        out.write('</div>\n<div class="sidebar-footer">W10–W16 数据</div>\n</div>\n')
+    # 1. 尝试读取现有的 dashboard.html 作为模板
+    template_path = os.path.join(BASE, 'dashboard.html')
+    if os.path.exists(template_path):
+        with open(template_path, 'r', encoding='utf-8') as f:
+            html = f.read()
+    else:
+        # fallback: 读取 dashboard_top50.html
+        top50_html_path = os.path.join(BASE, 'dashboard_top50.html')
+        with open(top50_html_path, 'r', encoding='utf-8') as f:
+            html = f.read()
 
-        # Main content
-        out.write('<div class="main-content">\n')
-        out.write(f'<div class="page active" id="page-top50">\n{top50_body}\n</div>\n')
+    top50_json = json.dumps(top50_output, ensure_ascii=False)
+    cat_json = json.dumps(cat_data, ensure_ascii=False)
 
-        # Category page
-        out.write('<div class="page" id="page-category">\n')
-        out.write('<div class="container"><div class="header"><div class="header-title">产品类别横向对比</div>')
-        out.write('<div class="header-subtitle">W10–W16 · 按产品首字母分类对比核心指标</div></div>\n')
-        out.write('<div class="cat-filters"><div><div class="cat-filter-label">时间颗粒度</div>')
-        out.write('<select class="filter-select" id="catGranularitySelector" style="font-weight:700;color:#2563eb;"><option value="week">自然周</option><option value="4week">4周周期</option></select></div>\n')
-        out.write('<div><div class="cat-filter-label">查看周期</div>')
-        out.write('<select class="filter-select" id="catWeekSelector" style="font-weight:700;color:#2563eb;"><option value="all">全部 7 周汇总</option></select></div>\n')
-        out.write('<div><div class="cat-filter-label">排序</div><select class="filter-select" id="catSortSelector">')
-        out.write('<option value="views">按浏览量</option><option value="revenue">按收入</option>')
-        out.write('<option value="cartRate">按加购率</option><option value="convRate">按转化率</option>')
-        out.write('<option value="avgViews">按人均浏览</option><option value="count">按产品数</option>')
-        out.write('</select></div></div>\n')
-        out.write('<div class="card"><div class="card-title" id="catTableTitle">类别横向对比</div>')
-        out.write('<div class="table-scroll"><table><thead><tr id="catTableHead"></tr></thead><tbody id="catTableBody"></tbody></table></div></div>\n')
-        out.write('</div></div>\n')
+    # 2. 替换数据注入部分
+    html = re.sub(
+        r'<script>window\.__EMBEDDED_DATA__\s*=\s*\{.*?\};</script>',
+        f'<script>window.__EMBEDDED_DATA__ = {top50_json};</script>',
+        html, count=1, flags=re.DOTALL
+    )
+    html = re.sub(
+        r'<script>window\.__CAT_DATA__\s*=\s*\{.*?\};</script>',
+        f'<script>window.__CAT_DATA__ = {cat_json};</script>',
+        html, count=1, flags=re.DOTALL
+    )
 
-        out.write('</div>\n')  # close main-content
-
-        # Data
-        out.write(f'<script>window.__EMBEDDED_DATA__ = {top50_data_str};</script>\n')
-        out.write(f'<script>window.__CAT_DATA__ = {cat_data_str};</script>\n')
-
-        # Nav JS
-        out.write('<script>\n')
-        out.write("document.querySelectorAll('.nav-item').forEach(function(item) {\n")
-        out.write("  item.addEventListener('click', function() {\n")
-        out.write("    if (!item.dataset.page) return;\n")
-        out.write("    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });\n")
-        out.write("    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });\n")
-        out.write("    item.classList.add('active');\n")
-        out.write("    document.getElementById('page-' + item.dataset.page).classList.add('active');\n")
-        out.write("  });\n});\n</script>\n")
-
-        # Top50 JS
-        out.write(f'<script>\n(function() {{\n{top50_js}\n}})();\n</script>\n')
-
-        # Category JS (inline)
-        cat_js_file = os.path.join(BASE, 'category_render.js')
-        cat_js = _build_category_js()
-        out.write(f'<script>\n{cat_js}\n</script>\n')
-
-        out.write('</body>\n</html>')
+    # 3. 写入输出
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(html)
 
     size = os.path.getsize(out_path)
     print(f"  ✓ dashboard.html ({size:,} bytes)")
