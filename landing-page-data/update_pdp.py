@@ -238,6 +238,68 @@ def step1_read_ecommerce():
     return products
 
 
+def step1b_extract_traffic_sources(products):
+    """步骤1b: 从各分类页的「页面点击数.csv」中提取每个产品的流量来源 Top 3"""
+    print("🔗 提取产品流量来源...")
+
+    def slug_to_name(slug):
+        return slug.replace('-', ' ').title()
+
+    traffic = defaultdict(lambda: defaultdict(int))
+
+    for entry in os.listdir(BASE):
+        cat_path = os.path.join(BASE, entry)
+        if not os.path.isdir(cat_path):
+            continue
+        if entry in ('pageviews', '__pycache__', '.git', '.tmp.driveupload'):
+            continue
+        if entry.startswith('.'):
+            continue
+
+        cat_slug = entry
+
+        for week_entry in os.listdir(cat_path):
+            week_path = os.path.join(cat_path, week_entry)
+            if not os.path.isdir(week_path):
+                continue
+            click_file = os.path.join(week_path, '页面点击数.csv')
+            if not os.path.exists(click_file):
+                continue
+
+            with open(click_file, 'r', encoding='utf-8-sig') as f:
+                lines = f.readlines()
+                header_idx = next((i for i, l in enumerate(lines) if l.startswith('Click_URL,')), None)
+                if header_idx is None:
+                    continue
+                reader = csv.DictReader(lines[header_idx:])
+                for row in reader:
+                    url = row.get('Click_URL', '').strip()
+                    if not url or '/products/' not in url:
+                        continue
+                    m = re.search(r'/products/([a-zA-Z]\d+)', url)
+                    if not m:
+                        continue
+                    code = m.group(1).lower()
+                    clicks = int(row.get('事件数', 0))
+                    if clicks <= 0:
+                        continue
+                    traffic[code][cat_slug] += clicks
+
+    matched = 0
+    for code, p in products.items():
+        if code not in traffic:
+            p['trafficSources'] = []
+            continue
+        top3 = sorted(traffic[code].items(), key=lambda x: -x[1])[:3]
+        p['trafficSources'] = [
+            {'slug': s, 'name': slug_to_name(s), 'clicks': c}
+            for s, c in top3
+        ]
+        matched += 1
+
+    print(f"  ✓ {matched} 个产品匹配到流量来源")
+
+
 def step2_classify_and_rank(products):
     """步骤2: 分类、计算聚合指标、排名"""
     print("📊 计算排名和趋势...")
@@ -500,6 +562,7 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
             'rankDelta': p['rankDelta'], 'streak': p['streak'], 'bestRank': p['bestRank'],
             'trend': p['trend'], 'wow': p['wow'], 'tags': p['tags'],
             'prefixBench': p.get('prefixBench', 0), 'prefixTotal': p.get('prefixTotal', 0),
+            'trafficSources': p.get('trafficSources', []),
         }
 
     out_products = sorted([to_dict(products[n]) for n in needed], key=lambda x: x['rank'])
@@ -817,6 +880,7 @@ def main():
     print("=" * 60)
 
     products = step1_read_ecommerce()
+    step1b_extract_traffic_sources(products)
     all_sorted, cat_products, needed, active_cats, prefixBench = step2_classify_and_rank(products)
     step3_match_orders(products, needed)
     orders_file = find_orders_file()
