@@ -239,7 +239,13 @@ def step1_read_ecommerce():
 
 
 def step1b_extract_traffic_sources(products):
-    """步骤1b: 从各分类页的「页面点击数.csv」中提取每个产品的流量来源 Top 3"""
+    """步骤1b: 从各分类页的「页面点击数.csv」中提取每个产品的流量来源 Top 3
+
+    匹配逻辑：
+    1. /products/a599-xxx  -> 直接提取 a599
+    2. /products/599-xxx   -> 提取 599，在多个候选产品(a599/h599...)中
+                              用 URL slug 关键词和产品名称匹配最相似的一个
+    """
     print("🔗 提取产品流量来源...")
 
     def slug_to_name(slug):
@@ -247,11 +253,39 @@ def step1b_extract_traffic_sources(products):
 
     traffic = defaultdict(lambda: defaultdict(int))
 
+    # 建立数字后缀 → 候选产品代码列表的映射（处理 599 -> [a599, h599] 冲突）
+    digit_to_codes = defaultdict(list)
+    for code in products:
+        m = re.search(r'(\d+)$', code)
+        if m:
+            digit_to_codes[m.group(1)].append(code)
+
+    def resolve_digit_code(digit, url_slug):
+        """根据 URL slug 关键词匹配最相似的产品"""
+        candidates = digit_to_codes.get(digit, [])
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        # 多个候选时，用 URL slug 关键词匹配产品名称
+        slug_words = set(url_slug.lower().split('-'))
+        best_match = candidates[0]
+        best_score = -1
+        for cand in candidates:
+            name = products[cand]['name'].lower()
+            # 计算 slug 关键词在产品名称中的匹配数
+            score = sum(1 for w in slug_words if len(w) > 2 and w in name)
+            if score > best_score:
+                best_score = score
+                best_match = cand
+        return best_match
+
     for entry in os.listdir(BASE):
         cat_path = os.path.join(BASE, entry)
         if not os.path.isdir(cat_path):
             continue
-        if entry in ('pageviews', '__pycache__', '.git', '.tmp.driveupload'):
+        if entry in ('pageviews', 'all', '__pycache__', '.git', '.tmp.driveupload'):
             continue
         if entry.startswith('.'):
             continue
@@ -276,10 +310,25 @@ def step1b_extract_traffic_sources(products):
                     url = row.get('Click_URL', '').strip()
                     if not url or '/products/' not in url:
                         continue
-                    m = re.search(r'/products/([a-zA-Z]\d+)', url)
+
+                    # 提取 URL 中的产品代码部分和剩余 slug
+                    m = re.search(r'/products/([a-zA-Z]?\d+)(?:-(.*))?', url)
                     if not m:
                         continue
+
                     code = m.group(1).lower()
+                    url_slug = m.group(2) or ''
+
+                    # 纯数字（如 599）需要解析冲突
+                    if code[0].isdigit():
+                        resolved = resolve_digit_code(code, url_slug)
+                        if resolved is None:
+                            continue
+                        code = resolved
+
+                    if code not in products:
+                        continue
+
                     clicks = int(row.get('事件数', 0))
                     if clicks <= 0:
                         continue
