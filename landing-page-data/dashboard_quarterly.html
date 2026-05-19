@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分类页季度目标完成汇总 | LinkDolls</title>
+<style>
+:root {
+  --bg: #0f172a; --card: #1e293b; --text: #f1f5f9;
+  --muted: #94a3b8; --border: #334155;
+  --green: #10b981; --red: #ef4444; --yellow: #f59e0b;
+  --blue: #3b82f6; --purple: #8b5cf6;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg); color: var(--text); padding: 24px;
+}
+.header {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom: 24px; flex-wrap:wrap; gap:12px;
+}
+.header h1 { font-size: 24px; font-weight: 700; }
+.header .subtitle { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.quarter-tabs {
+  display:flex; gap: 8px;
+}
+.quarter-tab {
+  padding: 8px 20px; border-radius: 8px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border);
+  font-size: 14px; font-weight: 600; transition: all 0.2s;
+}
+.quarter-tab.active {
+  background: var(--blue); border-color: var(--blue);
+}
+.quarter-tab:hover:not(.active) { border-color: var(--blue); }
+
+.table-wrap {
+  background: var(--card); border-radius: 12px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+th {
+  background: rgba(59,130,246,0.1); color: var(--blue);
+  font-weight: 600; text-align: left; padding: 14px 12px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+td {
+  padding: 12px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+tr:hover td { background: rgba(59,130,246,0.05); }
+.cat-name { font-weight: 600; }
+.cat-key { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.owner { color: var(--muted); font-size: 12px; }
+
+.num { font-family: 'SF Mono', monospace; font-weight: 600; }
+.rate {
+  display: inline-block; padding: 2px 10px; border-radius: 12px;
+  font-size: 12px; font-weight: 700;
+}
+.rate.high { background: rgba(16,185,129,0.15); color: var(--green); }
+.rate.mid { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.rate.low { background: rgba(239,68,68,0.15); color: var(--red); }
+
+.progress-bar {
+  width: 80px; height: 6px; background: var(--border);
+  border-radius: 3px; overflow: hidden; margin-top: 4px;
+}
+.progress-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--blue), var(--purple));
+}
+.progress-fill.high { background: var(--green); }
+.progress-fill.mid { background: var(--yellow); }
+.progress-fill.low { background: var(--red); }
+
+.summary-row {
+  background: rgba(59,130,246,0.08) !important;
+  font-weight: 700;
+}
+.summary-row td { border-top: 2px solid var(--blue); }
+
+.footer {
+  margin-top: 20px; color: var(--muted); font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  body { padding: 12px; }
+  th, td { padding: 8px 6px; font-size: 12px; }
+  .hide-mobile { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>📊 分类页季度目标完成汇总</h1>
+    <div class="subtitle">数据来源：GSC · GA4 · Shopify | 目标完成率 = 实际值 ÷ 目标值</div>
+  </div>
+  <div class="quarter-tabs">
+    <div class="quarter-tab active" data-q="Q2">Q2</div>
+    <div class="quarter-tab" data-q="Q1">Q1</div>
+    <div class="quarter-tab" data-q="Q3">Q3</div>
+    <div class="quarter-tab" data-q="Q4">Q4</div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table id="reportTable">
+    <thead>
+      <tr>
+        <th>分类页</th>
+        <th>负责人</th>
+        <th style="text-align:right">流量目标 (UV)</th>
+        <th style="text-align:right">实际流量</th>
+        <th style="text-align:center">完成率</th>
+        <th style="text-align:right">销售目标 ($)</th>
+        <th style="text-align:right">实际销售</th>
+        <th style="text-align:center">完成率</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<div class="footer">
+  点击上方 Q1/Q2/Q3/Q4 切换季度查看 | 绿色=达标(≥80%) 黄色=接近(50-80%) 红色=落后(<50%)
+</div>
+
+<script>
+const DATA = [{"category": "furry-sex-doll", "name": "Furry Sex Doll", "owner": "luna(rhett)", "quarters": {"Q1": {"target_uv": 2557, "actual_uv": 3072, "uv_rate": 120.1, "target_rev": 224, "actual_rev": 274.65, "rev_rate": 122.6}, "Q2": {"target_uv": 2813, "actual_uv": 2029, "uv_rate": 72.1, "target_rev": 247, "actual_rev": 2678.03, "rev_rate": 1084.2}, "Q3": {"target_uv": 3094, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 271, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 3403, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 298, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "alien-sex-dolls", "name": "Alien Sex Dolls", "owner": "marisol", "quarters": {"Q1": {"target_uv": 1335, "actual_uv": 965, "uv_rate": 72.3, "target_rev": 220, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 1468, "actual_uv": 412, "uv_rate": 28.1, "target_rev": 242, "actual_rev": 528.0, "rev_rate": 218.2}, "Q3": {"target_uv": 1615, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 266, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 1776, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 293, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "boob-job-sex-toys", "name": "Boob Job Sex Toys", "owner": "marisol", "quarters": {"Q1": {"target_uv": 1896, "actual_uv": 1803, "uv_rate": 95.1, "target_rev": 623, "actual_rev": 1420.8, "rev_rate": 228.1}, "Q2": {"target_uv": 2085, "actual_uv": 1373, "uv_rate": 65.9, "target_rev": 685, "actual_rev": 1143.71, "rev_rate": 167.0}, "Q3": {"target_uv": 2294, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 754, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 2523, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 829, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "sex-doll-torso-dildo", "name": "Sex Doll Torso Dildo", "owner": "maylee", "quarters": {"Q1": {"target_uv": 3577, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 370, "actual_rev": 1673.55, "rev_rate": 452.3}, "Q2": {"target_uv": 3935, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 407, "actual_rev": 450.25, "rev_rate": 110.6}, "Q3": {"target_uv": 4328, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 447, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 4761, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 492, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "vajankle-foot-fetish-toys", "name": "Vajankle Foot Fetish", "owner": "maylee", "quarters": {"Q1": {"target_uv": 5573, "actual_uv": 3369, "uv_rate": 60.5, "target_rev": 1272, "actual_rev": 1886.2, "rev_rate": 148.3}, "Q2": {"target_uv": 6131, "actual_uv": 2827, "uv_rate": 46.1, "target_rev": 1399, "actual_rev": 862.0, "rev_rate": 61.6}, "Q3": {"target_uv": 6744, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1539, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 7418, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1693, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "all", "name": "All", "owner": "luna(eleanor)", "quarters": {"Q1": {"target_uv": 8034, "actual_uv": 5768, "uv_rate": 71.8, "target_rev": 2763, "actual_rev": 4222.71, "rev_rate": 152.8}, "Q2": {"target_uv": 8838, "actual_uv": 4029, "uv_rate": 45.6, "target_rev": 3039, "actual_rev": 1829.63, "rev_rate": 60.2}, "Q3": {"target_uv": 9721, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 3343, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 10693, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 3678, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "linkdolls.com", "name": "Linkdolls.com", "owner": "marisol", "quarters": {"Q1": {"target_uv": 12223, "actual_uv": 10407, "uv_rate": 85.1, "target_rev": 15551, "actual_rev": 18040.58, "rev_rate": 116.0}, "Q2": {"target_uv": 13445, "actual_uv": 6279, "uv_rate": 46.7, "target_rev": 17106, "actual_rev": 9663.08, "rev_rate": 56.5}, "Q3": {"target_uv": 14789, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 18817, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 16268, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 20699, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "fake-ass-sex-toy", "name": "Fake Ass Sex Toy", "owner": "luna(eleanor)", "quarters": {"Q1": {"target_uv": 4888, "actual_uv": 6186, "uv_rate": 126.6, "target_rev": 1670, "actual_rev": 1676.88, "rev_rate": 100.4}, "Q2": {"target_uv": 5377, "actual_uv": 3839, "uv_rate": 71.4, "target_rev": 1837, "actual_rev": 864.09, "rev_rate": 47.0}, "Q3": {"target_uv": 5914, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2020, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 6506, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2223, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "sex-doll-head", "name": "Sex Doll Head", "owner": "luna", "quarters": {"Q1": {"target_uv": 8803, "actual_uv": 5100, "uv_rate": 57.9, "target_rev": 11976, "actual_rev": 4374.11, "rev_rate": 36.5}, "Q2": {"target_uv": 9683, "actual_uv": 3627, "uv_rate": 37.5, "target_rev": 13174, "actual_rev": 4716.71, "rev_rate": 35.8}, "Q3": {"target_uv": 10652, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 14491, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 11717, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 15940, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "sex-doll-torso", "name": "Sex Doll Torso", "owner": "luna", "quarters": {"Q1": {"target_uv": 8803, "actual_uv": 1810, "uv_rate": 20.6, "target_rev": 11976, "actual_rev": 2225.86, "rev_rate": 18.6}, "Q2": {"target_uv": 9683, "actual_uv": 2233, "uv_rate": 23.1, "target_rev": 13174, "actual_rev": 3663.03, "rev_rate": 27.8}, "Q3": {"target_uv": 10652, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 14491, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 11717, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 15940, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "shemale-sex-doll-torso-1", "name": "Shemale Sex Doll Torso", "owner": "maylee", "quarters": {"Q1": {"target_uv": 7653, "actual_uv": 4709, "uv_rate": 61.5, "target_rev": 2075, "actual_rev": 1503.95, "rev_rate": 72.5}, "Q2": {"target_uv": 8418, "actual_uv": 2228, "uv_rate": 26.5, "target_rev": 2283, "actual_rev": 588.0, "rev_rate": 25.8}, "Q3": {"target_uv": 9260, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2511, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 10186, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2762, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "full-doll", "name": "Full Doll 完整娃", "owner": "marisol", "quarters": {"Q1": {"target_uv": 28279, "actual_uv": 13160, "uv_rate": 46.5, "target_rev": 6329, "actual_rev": 705.36, "rev_rate": 11.1}, "Q2": {"target_uv": 31107, "actual_uv": 6423, "uv_rate": 20.6, "target_rev": 6962, "actual_rev": 1438.97, "rev_rate": 20.7}, "Q3": {"target_uv": 34217, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 7658, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 37639, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 8424, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "femboys-sex-doll", "name": "Femboys Sex Doll", "owner": "maylee", "quarters": {"Q1": {"target_uv": 2183, "actual_uv": 3297, "uv_rate": 151.0, "target_rev": 1000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 2402, "actual_uv": 2268, "uv_rate": 94.4, "target_rev": 1100, "actual_rev": 107.98, "rev_rate": 9.8}, "Q3": {"target_uv": 2642, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 2906, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "robotic-sex-doll", "name": "Robotic Sex Doll", "owner": "marisol", "quarters": {"Q1": {"target_uv": 21947, "actual_uv": 7857, "uv_rate": 35.8, "target_rev": 5137, "actual_rev": 1641.58, "rev_rate": 32.0}, "Q2": {"target_uv": 24142, "actual_uv": 4511, "uv_rate": 18.7, "target_rev": 5651, "actual_rev": 499.0, "rev_rate": 8.8}, "Q3": {"target_uv": 26556, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 6216, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 29212, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 6838, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "bbw-sex-doll-torso", "name": "BBW Sex Doll Torso", "owner": "marisol", "quarters": {"Q1": {"target_uv": 9130, "actual_uv": 8250, "uv_rate": 90.4, "target_rev": 3943, "actual_rev": 3045.46, "rev_rate": 77.2}, "Q2": {"target_uv": 10043, "actual_uv": 5283, "uv_rate": 52.6, "target_rev": 4337, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 11048, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 4771, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 12152, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 5248, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "sex-doll-videos", "name": "Sex Doll Videos", "owner": "jim", "quarters": {"Q1": {"target_uv": 4445, "actual_uv": 813, "uv_rate": 18.3, "target_rev": 2000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 4890, "actual_uv": 2764, "uv_rate": 56.5, "target_rev": 2200, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 5379, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2420, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 5917, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 2662, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "celebrity-sex-dolls", "name": "Celebrity Sex Dolls", "owner": "luna(rhett)", "quarters": {"Q1": {"target_uv": 5173, "actual_uv": 5305, "uv_rate": 102.6, "target_rev": 132, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 5691, "actual_uv": 2985, "uv_rate": 52.5, "target_rev": 145, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 6260, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 159, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 6886, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 175, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "fake-pussy-fake-vagina", "name": "Fake Pussy Fake Vagina", "owner": "luna(eleanor)", "quarters": {"Q1": {"target_uv": 3370, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1167, "actual_rev": 238.0, "rev_rate": 20.4}, "Q2": {"target_uv": 3707, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1284, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 4078, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1412, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 4486, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1554, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "anime-sex-doll", "name": "Anime Sex Doll", "owner": "marisol", "quarters": {"Q1": {"target_uv": 3327, "actual_uv": 6888, "uv_rate": 207.0, "target_rev": 104, "actual_rev": 977.58, "rev_rate": 940.0}, "Q2": {"target_uv": 3660, "actual_uv": 3883, "uv_rate": 106.1, "target_rev": 114, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 4026, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 125, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 4428, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 138, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "huge-breasts-sex-dolls", "name": "Huge Breasts Sex Dolls", "owner": "marisol", "quarters": {"Q1": {"target_uv": 660, "actual_uv": 1194, "uv_rate": 180.9, "target_rev": 1000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 726, "actual_uv": 1290, "uv_rate": 177.7, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 799, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 878, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "black-sex-dolls + black-torso", "name": "Black Sex Dolls + Black Torso", "owner": "luna(rhett)", "quarters": {"Q1": {"target_uv": 3172, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 473, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 3489, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 520, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 3838, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 572, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 4222, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 630, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "flat-chest-sex-doll", "name": "Flat Chest Sex Doll", "owner": "marisol", "quarters": {"Q1": {"target_uv": 1238, "actual_uv": 2440, "uv_rate": 197.1, "target_rev": 781, "actual_rev": 1399.0, "rev_rate": 179.1}, "Q2": {"target_uv": 1362, "actual_uv": 1653, "uv_rate": 121.4, "target_rev": 859, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 1498, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 945, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 1648, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1039, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "asian-sex-doll", "name": "Asian Sex Doll", "owner": "luna(eleanor)", "quarters": {"Q1": {"target_uv": 1784, "actual_uv": 1137, "uv_rate": 63.7, "target_rev": 1000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 1962, "actual_uv": 624, "uv_rate": 31.8, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 2159, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 2374, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "sex-doll-legs-feet", "name": "Sex Doll Legs Feet", "owner": "maylee", "quarters": {"Q1": {"target_uv": 244, "actual_uv": 249, "uv_rate": 102.0, "target_rev": 249, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 269, "actual_uv": 136, "uv_rate": 50.6, "target_rev": 274, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 296, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 301, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 325, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "ros-sex-doll-heads-1", "name": "ROS Sex Doll Heads", "owner": "luna", "quarters": {"Q1": {"target_uv": 491, "actual_uv": 1003, "uv_rate": 204.3, "target_rev": 1000, "actual_rev": 704.46, "rev_rate": 70.4}, "Q2": {"target_uv": 540, "actual_uv": 708, "uv_rate": 131.1, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 594, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 653, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "lesbian-sex-doll-torso", "name": "Lesbian Sex Doll Torso", "owner": "maylee", "quarters": {"Q1": {"target_uv": 735, "actual_uv": 530, "uv_rate": 72.1, "target_rev": 252, "actual_rev": 99.0, "rev_rate": 39.3}, "Q2": {"target_uv": 808, "actual_uv": 307, "uv_rate": 38.0, "target_rev": 277, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 889, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 305, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 978, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 335, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "under-1000-full-doll", "name": "Under $1000 Full Doll", "owner": "luna(rhett)", "quarters": {"Q1": {"target_uv": 722, "actual_uv": 1109, "uv_rate": 153.6, "target_rev": 1000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 795, "actual_uv": 551, "uv_rate": 69.3, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 874, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 962, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "futa-sex-doll", "name": "Futa Sex Doll", "owner": "maylee", "quarters": {"Q1": {"target_uv": 440, "actual_uv": 1388, "uv_rate": 315.5, "target_rev": 1000, "actual_rev": 181.95, "rev_rate": 18.2}, "Q2": {"target_uv": 484, "actual_uv": 673, "uv_rate": 139.0, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 532, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 586, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}, {"category": "in-stock-usa", "name": "In Stock USA", "owner": "luna(rhett)", "quarters": {"Q1": {"target_uv": 660, "actual_uv": 10, "uv_rate": 1.5, "target_rev": 1000, "actual_rev": 0, "rev_rate": 0.0}, "Q2": {"target_uv": 726, "actual_uv": 4, "uv_rate": 0.6, "target_rev": 1100, "actual_rev": 0, "rev_rate": 0.0}, "Q3": {"target_uv": 799, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1210, "actual_rev": 0, "rev_rate": 0.0}, "Q4": {"target_uv": 878, "actual_uv": 0, "uv_rate": 0.0, "target_rev": 1331, "actual_rev": 0, "rev_rate": 0.0}}}];
+const QUARTERS = ['Q1','Q2','Q3','Q4'];
+let currentQ = 'Q2';
+
+function fmtNum(n) {
+  if (n === 0) return '0';
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+function fmtMoney(n) {
+  if (n === 0) return '$0';
+  if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'K';
+  return '$' + n.toLocaleString();
+}
+function rateClass(rate) {
+  if (rate >= 80) return 'high';
+  if (rate >= 50) return 'mid';
+  return 'low';
+}
+
+function render() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  let sumTargetUV = 0, sumActualUV = 0;
+  let sumTargetRev = 0, sumActualRev = 0;
+
+  DATA.forEach(row => {
+    const q = row.quarters[currentQ];
+    sumTargetUV += q.target_uv;
+    sumActualUV += q.actual_uv;
+    sumTargetRev += q.target_rev;
+    sumActualRev += q.actual_rev;
+
+    const uvRateClass = rateClass(q.uv_rate);
+    const revRateClass = rateClass(q.rev_rate);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <div class="cat-name">${row.name}</div>
+        <div class="cat-key">${row.category}</div>
+      </td>
+      <td class="owner">${row.owner || '-'}</td>
+      <td style="text-align:right" class="num">${fmtNum(q.target_uv)}</td>
+      <td style="text-align:right" class="num">${fmtNum(q.actual_uv)}</td>
+      <td style="text-align:center">
+        <span class="rate ${uvRateClass}">${q.uv_rate}%</span>
+        <div class="progress-bar">
+          <div class="progress-fill ${uvRateClass}" style="width:${Math.min(q.uv_rate,100)}%"></div>
+        </div>
+      </td>
+      <td style="text-align:right" class="num">${fmtMoney(q.target_rev)}</td>
+      <td style="text-align:right" class="num">${fmtMoney(q.actual_rev)}</td>
+      <td style="text-align:center">
+        <span class="rate ${revRateClass}">${q.rev_rate}%</span>
+        <div class="progress-bar">
+          <div class="progress-fill ${revRateClass}" style="width:${Math.min(q.rev_rate,100)}%"></div>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // 汇总行
+  const uvRate = sumTargetUV > 0 ? Math.round(sumActualUV / sumTargetUV * 100) : 0;
+  const revRate = sumTargetRev > 0 ? Math.round(sumActualRev / sumTargetRev * 100) : 0;
+  const uvRateClass = rateClass(uvRate);
+  const revRateClass = rateClass(revRate);
+
+  const summary = document.createElement('tr');
+  summary.className = 'summary-row';
+  summary.innerHTML = `
+    <td colspan="2"><strong>📈 全站合计</strong></td>
+    <td style="text-align:right" class="num">${fmtNum(sumTargetUV)}</td>
+    <td style="text-align:right" class="num">${fmtNum(sumActualUV)}</td>
+    <td style="text-align:center">
+      <span class="rate ${uvRateClass}">${uvRate}%</span>
+      <div class="progress-bar">
+        <div class="progress-fill ${uvRateClass}" style="width:${Math.min(uvRate,100)}%"></div>
+      </div>
+    </td>
+    <td style="text-align:right" class="num">${fmtMoney(sumTargetRev)}</td>
+    <td style="text-align:right" class="num">${fmtMoney(sumActualRev)}</td>
+    <td style="text-align:center">
+      <span class="rate ${revRateClass}">${revRate}%</span>
+      <div class="progress-bar">
+        <div class="progress-fill ${revRateClass}" style="width:${Math.min(revRate,100)}%"></div>
+      </div>
+    </td>
+  `;
+  tbody.appendChild(summary);
+}
+
+// Tab切换
+document.querySelectorAll('.quarter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.quarter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentQ = tab.dataset.q;
+    render();
+  });
+});
+
+render();
+</script>
+</body>
+</html>
