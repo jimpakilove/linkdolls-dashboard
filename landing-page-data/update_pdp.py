@@ -514,7 +514,7 @@ def step3b_category_revenue(orders_file, week_starts=None, week_end=None,
 
             # 去重：同一订单+产品+日期+金额只算一次
             day = get_field(r, '天')
-            day = day.strip() if day else ''
+            day = normalize_date(day.strip() if day else '')
             net_str = get_field(r, '净销售额')
             net_str = net_str.strip().replace(',', '') if net_str else '0'
             key = (get_field(r, '订单名称'), title, day, net_str)
