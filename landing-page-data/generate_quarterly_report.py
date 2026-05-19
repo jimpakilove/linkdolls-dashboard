@@ -256,14 +256,10 @@ let currentQ = 'Q2';
 
 function fmtNum(n) {
   if (n === 0) return '0';
-  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
   return n.toLocaleString();
 }
 function fmtMoney(n) {
   if (n === 0) return '$0';
-  if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
-  if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'K';
   return '$' + n.toLocaleString();
 }
 function rateClass(rate) {
