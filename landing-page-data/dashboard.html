@@ -1119,7 +1119,7 @@ const data = window.__EMBEDDED_DATA__;
                 if (weekGranularity === 'week' && w >= 0) sparkHighlight = w;
                 else if (weekGranularity === '4week' && w >= 0) sparkHighlight = Math.floor((periods4w[w].startIdx + periods4w[w].endIdx) / 2);
 
-                const trafficAttr = item.trafficSources && item.trafficSources.length
+                const trafficAttr = (!selIndices && item.trafficSources && item.trafficSources.length)
                     ? `data-traffic-sources='${JSON.stringify(item.trafficSources)}' class="has-traffic-sources"`
                     : '';
 
