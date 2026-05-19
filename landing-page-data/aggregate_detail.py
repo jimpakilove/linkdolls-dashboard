@@ -496,6 +496,14 @@ def parse_webpage(filepath):
             break
     return result
 
+def _get_landing_field(row, cn_field, en_field):
+    """兼容中英文表头"""
+    val = row.get(cn_field, '')
+    if val == '' or val is None:
+        val = row.get(en_field, '')
+    return val
+
+
 def parse_landing_page_stats(week_folder, category):
     # ... 保持不变 ...
     result = {}
@@ -517,17 +525,17 @@ def parse_landing_page_stats(week_folder, category):
         with open(target_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                page_path = row.get('登陆页面路径', '').strip()
+                page_path = _get_landing_field(row, '登陆页面路径', 'Landing page path').strip()
                 if page_path == target_path:
                     result = {
-                        'sessions': int(row.get('访问', 0) or 0),
-                        'visitors': int(row.get('在线商店访客', 0) or 0),
-                        'bounceRate': float(row.get('跳出率', 0) or 0),
-                        'pageviewsPerSession': float(row.get('每次访问的页面浏览量', 0) or 0),
-                        'avgSessionDuration': float(row.get('平均访问持续时间', 0) or 0),
-                        'addToCart': int(row.get('有商品添加到购物车的访问', 0) or 0),
-                        'checkout': int(row.get('到达结账页面的访问', 0) or 0),
-                        'purchase': int(row.get('完成结账的访问', 0) or 0)
+                        'sessions': int(_get_landing_field(row, '访问', 'Sessions') or 0),
+                        'visitors': int(_get_landing_field(row, '在线商店访客', 'Online store visitors') or 0),
+                        'bounceRate': float(_get_landing_field(row, '跳出率', 'Bounce rate') or 0),
+                        'pageviewsPerSession': float(_get_landing_field(row, '每次访问的页面浏览量', 'Pageviews per session') or 0),
+                        'avgSessionDuration': float(_get_landing_field(row, '平均访问持续时间', 'Average session duration') or 0),
+                        'addToCart': int(_get_landing_field(row, '有商品添加到购物车的访问', 'Sessions with cart additions') or 0),
+                        'checkout': int(_get_landing_field(row, '到达结账页面的访问', 'Sessions that reached checkout') or 0),
+                        'purchase': int(_get_landing_field(row, '完成结账的访问', 'Sessions that completed checkout') or 0)
                     }
                     break
     except Exception as e:
