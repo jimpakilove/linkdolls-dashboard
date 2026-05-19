@@ -164,9 +164,19 @@ def get_field(row, field, default=''):
     return default
 
 def normalize_order_tag(tag):
-    """去掉 Order tag 中的语言前缀"""
+    """去掉 Order tag 中的语言前缀，处理 Shopify 截断的特殊映射"""
     tag = tag.strip()
+    # 去掉语言前缀
     normalized = re.sub(r'^/(en-ca|de|ja|fr|es|pt|it|ko|zh|en|nl|sv|da|no|fi|pl|ru|ar|th|vi|id|ms|tr|he|cs|hu|ro|uk|el|bg|hr|sk|sl|et|lv|lt)/', '/', tag)
+    
+    # Shopify Order tag 长度限制导致的截断映射
+    # 被截断的短名称 -> 完整分类名
+    TRUNCATED_MAP = {
+        '/collections/sex-doll-torso-dildo': '/collections/sex-doll-torso-dildo-for-woman',
+    }
+    if normalized in TRUNCATED_MAP:
+        normalized = TRUNCATED_MAP[normalized]
+    
     return normalized
 
 def calculate_revenue_by_category(orders_all, category):
