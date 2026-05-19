@@ -173,6 +173,7 @@ def normalize_order_tag(tag):
     # 被截断的短名称 -> 完整分类名
     TRUNCATED_MAP = {
         '/collections/sex-doll-torso-dildo': '/collections/sex-doll-torso-dildo-for-woman',
+        '/collections/fake-pussy-fake-vagina': '/collections/fake-pussy-fake-vagina-sex-toys',
     }
     if normalized in TRUNCATED_MAP:
         normalized = TRUNCATED_MAP[normalized]

@@ -1,7 +1,0 @@
-Merge branch 'main' of https://github.com/jimpakilove/linkdolls-dashboard
-
-# Conflicts:
-#	landing-page-data/category_data.json
-#	landing-page-data/dashboard.html
-#	landing-page-data/top50_data.json
-#	landing-page-data/update_pdp.py
