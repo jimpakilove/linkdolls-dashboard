@@ -18,7 +18,7 @@ from difflib import SequenceMatcher  # noqa: F401 – kept for compatibility
 _ORDER_FIELD_MAP = {
     '产品标题': 'Product title',
     '订单名称': 'Order name',
-    '天': 'Day',
+    '天': '小时',
     '净销售额': 'Net sales',
 }
 _field_cache = {}
@@ -114,7 +114,13 @@ def read_ecom_csv(path):
 
 
 def normalize_date(d):
-    """统一日期格式：2026/4/29 -> 2026-04-29"""
+    """统一日期格式：2026/4/29 -> 2026-04-29, 2026-05-15 13:00:00 -> 2026-05-15"""
+    if not d or not d.strip():
+        return ''
+    d = d.strip()
+    # 截取日期时间中的日期部分
+    if ' ' in d and ':' in d:
+        d = d.split(' ')[0]
     if '/' in d:
         parts = d.split('/')
         if len(parts) == 3:
@@ -491,11 +497,15 @@ def step3_match_orders(products, needed):
         title = title.strip() if title else ''
         if not title or any(kw in title.lower() for kw in SKIP_ORDER_KW):
             continue
-        key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
+        day_val = get_field(r, '天')
+        day_val = day_val.strip() if day_val else ''
+        if not day_val:
+            continue
+        key = (get_field(r, '订单名称'), get_field(r, '产品标题'), day_val, get_field(r, '净销售额'))
         if key in seen:
             continue
         seen.add(key)
-        wi = date_to_week(get_field(r, '天').strip())
+        wi = date_to_week(day_val)
         if wi < 0:
             continue
         net = float(get_field(r, '净销售额').replace(',', ''))
@@ -657,7 +667,9 @@ def step4_save_json(products, all_sorted, cat_products, needed, active_categorie
                 key = (get_field(r, '订单名称'), get_field(r, '产品标题'), get_field(r, '天'), get_field(r, '净销售额'))
                 if key in seen: continue
                 seen.add(key)
-                wi = date_to_week(get_field(r, '天').strip())
+                day_val = get_field(r, '天') or ''; day_val = day_val.strip()
+                if not day_val: continue
+                wi = date_to_week(day_val)
                 if wi < 0: continue
                 all_wr[wi] += float(get_field(r, '净销售额').replace(',', ''))
     all_wr = [round(x, 2) for x in all_wr]
