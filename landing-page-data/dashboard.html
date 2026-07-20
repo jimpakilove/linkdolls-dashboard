@@ -1119,7 +1119,7 @@ const data = window.__EMBEDDED_DATA__;
                 if (weekGranularity === 'week' && w >= 0) sparkHighlight = w;
                 else if (weekGranularity === '4week' && w >= 0) sparkHighlight = Math.floor((periods4w[w].startIdx + periods4w[w].endIdx) / 2);
 
-                const trafficAttr = (!selIndices && item.trafficSources && item.trafficSources.length)
+                const trafficAttr = (item.trafficSources && item.trafficSources.length)
                     ? `data-traffic-sources='${JSON.stringify(item.trafficSources)}' class="has-traffic-sources"`
                     : '';
 
@@ -1272,10 +1272,34 @@ const data = window.__EMBEDDED_DATA__;
         tooltip.className = 'traffic-tooltip';
         document.body.appendChild(tooltip);
 
+        function aggregateTrafficSources(sources, selIndices) {
+            // 根据当前周选择聚合流量来源数据，返回 top 3
+            if (!sources || !sources.length) return [];
+            const aggregated = sources.map(s => {
+                let clicks = 0;
+                if (s.weeklyClicks) {
+                    if (selIndices) {
+                        selIndices.forEach(i => { if (i < s.weeklyClicks.length) clicks += s.weeklyClicks[i]; });
+                    } else {
+                        clicks = s.weeklyClicks.reduce((a, b) => a + b, 0);
+                    }
+                } else if (s.clicks !== undefined) {
+                    clicks = s.clicks;  // backward compat
+                }
+                return { name: s.name, clicks };
+            }).filter(s => s.clicks > 0);
+            aggregated.sort((a, b) => b.clicks - a.clicks);
+            return aggregated.slice(0, 3);
+        }
+
         function showTooltip(e, sources) {
             if (!sources || !sources.length) return;
-            const rows = sources.map(s => `<div class="traffic-tooltip-row"><span class="traffic-tooltip-name">${s.name}</span><span class="traffic-tooltip-clicks">${s.clicks}</span></div>`).join('');
-            tooltip.innerHTML = '<div class="traffic-tooltip-title">流量来源 Top 3</div>' + rows;
+            const selIndices = getSelectedWeekIndices();
+            const top3 = aggregateTrafficSources(sources, selIndices);
+            if (!top3.length) return;
+            const rows = top3.map(s => `<div class="traffic-tooltip-row"><span class="traffic-tooltip-name">${s.name}</span><span class="traffic-tooltip-clicks">${s.clicks}</span></div>`).join('');
+            const title = selIndices ? `流量来源 Top 3（${selIndices.length > 1 ? '4周' : '单周'}）` : '流量来源 Top 3（全部）';
+            tooltip.innerHTML = `<div class="traffic-tooltip-title">${title}</div>` + rows;
             tooltip.style.display = 'block';
             positionTooltip(e);
         }

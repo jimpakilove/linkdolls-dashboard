@@ -239,7 +239,7 @@ def step1_read_ecommerce():
 
 
 def step1b_extract_traffic_sources(products):
-    """步骤1b: 从各分类页的「页面点击数.csv」中提取每个产品的流量来源 Top 3
+    """步骤1b: 从各分类页的「页面点击数.csv」中提取每个产品的流量来源（按周存储）
 
     匹配逻辑：
     1. /products/a599-xxx  -> 直接提取 a599
@@ -247,11 +247,13 @@ def step1b_extract_traffic_sources(products):
                               用 URL slug 关键词和产品名称匹配最相似的一个
     """
     print("🔗 提取产品流量来源...")
+    n_weeks = len(WEEKS)
 
     def slug_to_name(slug):
         return slug.replace('-', ' ').title()
 
-    traffic = defaultdict(lambda: defaultdict(int))
+    # traffic[code][slug] = [0] * n_weeks  (每周点击量数组)
+    traffic = defaultdict(lambda: defaultdict(lambda: [0] * n_weeks))
 
     # 建立数字后缀 → 候选产品代码列表的映射（处理 599 -> [a599, h599] 冲突）
     digit_to_codes = defaultdict(list)
@@ -300,6 +302,23 @@ def step1b_extract_traffic_sources(products):
             if not os.path.exists(click_file):
                 continue
 
+            # 确定该周文件夹对应的周索引
+            wi = -1
+            for i, (wname, suffix, wdate) in enumerate(WEEKS):
+                if week_entry.startswith('w') and wdate in week_entry:
+                    wi = i
+                    break
+            if wi < 0:
+                m = re.search(r'(\d{4}-\d{2}-\d{2})', week_entry)
+                if m:
+                    wdate = m.group(1)
+                    for i, (wname, suffix, wdate2) in enumerate(WEEKS):
+                        if wdate == wdate2:
+                            wi = i
+                            break
+            if wi < 0:
+                continue
+
             with open(click_file, 'r', encoding='utf-8-sig') as f:
                 lines = f.readlines()
                 header_idx = next((i for i, l in enumerate(lines) if l.startswith('Click_URL,')), None)
@@ -332,18 +351,21 @@ def step1b_extract_traffic_sources(products):
                     clicks = int(row.get('事件数', 0))
                     if clicks <= 0:
                         continue
-                    traffic[code][cat_slug] += clicks
+                    traffic[code][cat_slug][wi] += clicks
 
     matched = 0
     for code, p in products.items():
         if code not in traffic:
             p['trafficSources'] = []
             continue
-        top3 = sorted(traffic[code].items(), key=lambda x: -x[1])[:3]
-        p['trafficSources'] = [
-            {'slug': s, 'name': slug_to_name(s), 'clicks': c}
-            for s, c in top3
-        ]
+        # 保留所有 slug（大部分产品只有 2-5 个来源），带 weeklyClicks 数组
+        items = []
+        for slug, weekly in traffic[code].items():
+            total = sum(weekly)
+            items.append({'slug': slug, 'name': slug_to_name(slug), 'weeklyClicks': weekly, 'clicks': total})
+        # 按总点击量降序排列
+        items.sort(key=lambda x: -x['clicks'])
+        p['trafficSources'] = items
         matched += 1
 
     print(f"  ✓ {matched} 个产品匹配到流量来源")
