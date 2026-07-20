@@ -131,7 +131,7 @@ def get_field(row, field, default=''):
         'Product title': '产品标题',
         'Order tag': '订单标记',
         'Net sales': '净销售额',
-        'Day': '天',
+        'Day': '小时',  # 新版Shopify导出表用'小时'代替'天'
         'Gross sales': '毛销售额',
         'Total sales': '总销售额'
     }
@@ -291,11 +291,14 @@ def build_week_mapping(weeks_set):
 def normalize_date(date_str):
     """
     将日期格式统一转换为 YYYY-MM-DD
-    支持: 2026/5/4, 2026/05/04, 2026-5-4, 2026-05-04
+    支持: 2026/5/4, 2026/05/04, 2026-5-4, 2026-05-04, 2026-05-15 13:00:00
     """
     if not date_str:
         return ''
     date_str = date_str.strip()
+    # 处理 datetime 格式 (如 2026-05-15 13:00:00)
+    if ' ' in date_str:
+        date_str = date_str.split(' ')[0]
     # 统一用 - 替换 /
     date_str = date_str.replace('/', '-')
     parts = date_str.split('-')

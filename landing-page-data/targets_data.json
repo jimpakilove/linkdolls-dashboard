@@ -13,10 +13,10 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 3328,
+        "traffic": 3491,
         "revenue": 7350.34,
         "orders": 12,
-        "cvr": 0.36
+        "cvr": 0.34
       },
       "quarters": {
         "Q1": {
@@ -50,11 +50,11 @@
           "cvrGoal": 0.3,
           "orderGoal": 29,
           "revenueGoal": 3343.0,
-          "actualTraffic": 119,
+          "actualTraffic": 282,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 1.2,
+          "trafficRate": 2.9,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -86,7 +86,7 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 1320,
+        "traffic": 1426,
         "revenue": 0,
         "orders": 0,
         "cvr": 0.0
@@ -123,11 +123,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 4,
           "revenueGoal": 1210.0,
-          "actualTraffic": 84,
+          "actualTraffic": 190,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 3.9,
+          "trafficRate": 8.8,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -159,10 +159,10 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 6667,
+        "traffic": 7007,
         "revenue": 5684.37,
         "orders": 14,
-        "cvr": 0.21
+        "cvr": 0.2
       },
       "quarters": {
         "Q1": {
@@ -196,11 +196,11 @@
           "cvrGoal": 0.6,
           "orderGoal": 35,
           "revenueGoal": 2020.0,
-          "actualTraffic": 357,
+          "actualTraffic": 697,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 6.0,
+          "trafficRate": 11.8,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -305,10 +305,10 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 3103,
+        "traffic": 3410,
         "revenue": 7555.89,
         "orders": 10,
-        "cvr": 0.32
+        "cvr": 0.29
       },
       "quarters": {
         "Q1": {
@@ -342,11 +342,11 @@
           "cvrGoal": 0.1,
           "orderGoal": 11,
           "revenueGoal": 14491.0,
-          "actualTraffic": 307,
+          "actualTraffic": 614,
           "actualRevenue": 69.0,
           "actualOrders": 1,
-          "actualCVR": 0.33,
-          "trafficRate": 2.9,
+          "actualCVR": 0.16,
+          "trafficRate": 5.8,
           "revenueRate": 0.5,
           "orderRate": 9.1
         },
@@ -598,9 +598,9 @@
       "yearOrderGoal": 0,
       "yearActual": {
         "traffic": 12109,
-        "revenue": 15877.57,
-        "orders": 21,
-        "cvr": 0.17
+        "revenue": 16447.92,
+        "orders": 22,
+        "cvr": 0.18
       },
       "quarters": {
         "Q1": {
@@ -635,12 +635,12 @@
           "orderGoal": 11,
           "revenueGoal": 14491.0,
           "actualTraffic": 671,
-          "actualRevenue": 0,
-          "actualOrders": 0,
-          "actualCVR": 0.0,
+          "actualRevenue": 570.35,
+          "actualOrders": 1,
+          "actualCVR": 0.15,
           "trafficRate": 6.3,
-          "revenueRate": 0.0,
-          "orderRate": 0.0
+          "revenueRate": 3.9,
+          "orderRate": 9.1
         },
         "Q4": {
           "trafficGoal": 11717,
@@ -670,7 +670,7 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 759,
+        "traffic": 793,
         "revenue": 528.0,
         "orders": 1,
         "cvr": 0.13
@@ -707,11 +707,11 @@
           "cvrGoal": 0.1,
           "orderGoal": 2,
           "revenueGoal": 266.0,
-          "actualTraffic": 27,
+          "actualTraffic": 61,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 1.7,
+          "trafficRate": 3.8,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -744,8 +744,8 @@
       "yearOrderGoal": 0,
       "yearActual": {
         "traffic": 18544,
-        "revenue": 7650.29,
-        "orders": 9,
+        "revenue": 8474.29,
+        "orders": 10,
         "cvr": 0.05
       },
       "quarters": {
@@ -781,12 +781,12 @@
           "orderGoal": 33,
           "revenueGoal": 4771.0,
           "actualTraffic": 942,
-          "actualRevenue": 0,
-          "actualOrders": 0,
-          "actualCVR": 0.0,
+          "actualRevenue": 824.0,
+          "actualOrders": 1,
+          "actualCVR": 0.11,
           "trafficRate": 8.5,
-          "revenueRate": 0.0,
-          "orderRate": 0.0
+          "revenueRate": 17.3,
+          "orderRate": 3.0
         },
         "Q4": {
           "trafficGoal": 12152,
@@ -817,9 +817,9 @@
       "yearOrderGoal": 0,
       "yearActual": {
         "traffic": 3869,
-        "revenue": 3248.76,
-        "orders": 9,
-        "cvr": 0.23
+        "revenue": 3947.76,
+        "orders": 10,
+        "cvr": 0.26
       },
       "quarters": {
         "Q1": {
@@ -854,12 +854,12 @@
           "orderGoal": 5,
           "revenueGoal": 754.0,
           "actualTraffic": 241,
-          "actualRevenue": 0,
-          "actualOrders": 0,
-          "actualCVR": 0.0,
+          "actualRevenue": 699.0,
+          "actualOrders": 1,
+          "actualCVR": 0.41,
           "trafficRate": 10.5,
-          "revenueRate": 0.0,
-          "orderRate": 0.0
+          "revenueRate": 92.7,
+          "orderRate": 20.0
         },
         "Q4": {
           "trafficGoal": 2523,
@@ -1254,7 +1254,7 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 12154,
+        "traffic": 12732,
         "revenue": 1261.58,
         "orders": 3,
         "cvr": 0.02
@@ -1291,11 +1291,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 8,
           "revenueGoal": 125.0,
-          "actualTraffic": 444,
+          "actualTraffic": 1022,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 11.0,
+          "trafficRate": 25.4,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -1693,9 +1693,9 @@
       "yearOrderGoal": 0,
       "yearActual": {
         "traffic": 9236,
-        "revenue": 3561.8,
-        "orders": 12,
-        "cvr": 0.13
+        "revenue": 3760.8,
+        "orders": 13,
+        "cvr": 0.14
       },
       "quarters": {
         "Q1": {
@@ -1730,12 +1730,12 @@
           "orderGoal": 13,
           "revenueGoal": 1539.0,
           "actualTraffic": 99,
-          "actualRevenue": 0,
-          "actualOrders": 0,
-          "actualCVR": 0.0,
+          "actualRevenue": 199.0,
+          "actualOrders": 1,
+          "actualCVR": 1.01,
           "trafficRate": 1.5,
-          "revenueRate": 0.0,
-          "orderRate": 0.0
+          "revenueRate": 12.9,
+          "orderRate": 7.7
         },
         "Q4": {
           "trafficGoal": 7418,
@@ -1765,10 +1765,10 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 2687,
+        "traffic": 2914,
         "revenue": 182.85,
         "orders": 1,
-        "cvr": 0.04
+        "cvr": 0.03
       },
       "quarters": {
         "Q1": {
@@ -1802,11 +1802,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 8,
           "revenueGoal": 572.0,
-          "actualTraffic": 207,
+          "actualTraffic": 434,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 5.4,
+          "trafficRate": 11.3,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -1838,10 +1838,10 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 6235,
+        "traffic": 6781,
         "revenue": 3351.68,
         "orders": 3,
-        "cvr": 0.05
+        "cvr": 0.04
       },
       "quarters": {
         "Q1": {
@@ -1875,11 +1875,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 6,
           "revenueGoal": 271.0,
-          "actualTraffic": 367,
+          "actualTraffic": 913,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 11.9,
+          "trafficRate": 29.5,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -1911,7 +1911,7 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 65,
+        "traffic": 66,
         "revenue": 0,
         "orders": 0,
         "cvr": 0.0
@@ -1948,11 +1948,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 2,
           "revenueGoal": 1210.0,
-          "actualTraffic": 3,
+          "actualTraffic": 4,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 0.4,
+          "trafficRate": 0.5,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -1984,7 +1984,7 @@
       "yearCVRGoal": 0,
       "yearOrderGoal": 0,
       "yearActual": {
-        "traffic": 273,
+        "traffic": 289,
         "revenue": 0,
         "orders": 0,
         "cvr": 0.0
@@ -2021,11 +2021,11 @@
           "cvrGoal": 0.2,
           "orderGoal": 2,
           "revenueGoal": 1210.0,
-          "actualTraffic": 16,
+          "actualTraffic": 32,
           "actualRevenue": 0,
           "actualOrders": 0,
           "actualCVR": 0.0,
-          "trafficRate": 1.8,
+          "trafficRate": 3.7,
           "revenueRate": 0.0,
           "orderRate": 0.0
         },
@@ -2045,5 +2045,5 @@
       }
     }
   ],
-  "generatedAt": "2026-07-20 18:28"
+  "generatedAt": "2026-07-20 18:33"
 }
