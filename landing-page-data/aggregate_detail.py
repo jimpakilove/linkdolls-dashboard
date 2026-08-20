@@ -739,6 +739,9 @@ def aggregate_week(category, week_folder):
         'devices': [],
         'countries': [],
         'clicks': [],
+        # 区分“该周没有任何产品点击”与“该周未导入页面点击数据”。
+        # 点击率目标报表不能把缺失数据误判为 0%。
+        'clickDataAvailable': False,
         'conversion': {}
     }
     if not week_path.exists():
@@ -749,7 +752,9 @@ def aggregate_week(category, week_folder):
     result['queries'] = parse_queries(week_path / '查询数.csv')
     result['devices'] = parse_devices(week_path / '设备.csv')
     result['countries'] = parse_devices(week_path / '国家_地区.csv')
-    result['clicks'] = parse_clicks(week_path / '页面点击数.csv')
+    click_file = week_path / '页面点击数.csv'
+    result['clickDataAvailable'] = click_file.exists()
+    result['clicks'] = parse_clicks(click_file)
     conv_file = find_file(week_path, '购买历程_设备类别')
     if conv_file:
         result['conversion'] = parse_conversion(conv_file)
