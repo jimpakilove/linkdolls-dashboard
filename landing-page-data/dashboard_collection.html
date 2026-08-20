@@ -1006,40 +1006,10 @@ function aggregateWeeks(weekFolders) {
   }
   base.cartAdds = Object.values(caMap).sort((a, b) => b.cartAdds - a.cartAdds).slice(0, 20);
   
-  // Revenue: aggregate by quarter
-  const revMap = {};
-  for (const w of weeks) {
-    for (const [q, qData] of Object.entries(w.revenue || {})) {
-      if (!revMap[q]) {
-        revMap[q] = { orders: 0, totalSales: 0, avgPrice: 0, products: {}, monthlySales: {} };
-      }
-      revMap[q].orders += qData.orders || 0;
-      revMap[q].totalSales += qData.totalSales || 0;
-      // merge products
-      for (const p of (qData.products || [])) {
-        if (!revMap[q].products[p.name]) revMap[q].products[p.name] = { name: p.name, orders: 0, sales: 0 };
-        revMap[q].products[p.name].orders += p.orders || 0;
-        revMap[q].products[p.name].sales += p.sales || 0;
-      }
-      // merge monthly sales
-      for (const [m, v] of Object.entries(qData.monthlySales || {})) {
-        revMap[q].monthlySales[m] = (revMap[q].monthlySales[m] || 0) + v;
-      }
-    }
-  }
-  // finalize revenue
-  base.revenue = {};
-  for (const [q, r] of Object.entries(revMap)) {
-    const prods = Object.values(r.products).sort((a, b) => b.sales - a.sales).slice(0, 10);
-    const orders = r.orders;
-    base.revenue[q] = {
-      orders: orders,
-      totalSales: Math.round(r.totalSales * 100) / 100,
-      avgPrice: orders > 0 ? Math.round(r.totalSales / orders * 100) / 100 : 0,
-      products: prods,
-      monthlySales: r.monthlySales
-    };
-  }
+  // Revenue is a date-range aggregate repeated on every weekly record.
+  // Reusing it prevents a 4-week view from multiplying the quarterly total.
+  const revenueSource = weeks.find(w => w.revenue && Object.keys(w.revenue).length > 0);
+  base.revenue = revenueSource ? JSON.parse(JSON.stringify(revenueSource.revenue)) : {};
   
   // Update week/date labels
   const pDef = periods4w.find(p => p.key === period);
@@ -1320,8 +1290,15 @@ function renderRevenueCard(d) {
   const pct = qGoal > 0 ? Math.round(totalSales / qGoal * 100) : 0;
   const avgPrice = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
   
-  const q1Views = d.ga4?.pageviews || 0;
-  const convRate = q1Views > 0 ? (orderCount / q1Views * 100).toFixed(3) : '-';
+  const selectedWeeks = granularity === 'week'
+    ? [period]
+    : (periods4w.find(p => p.key === period)?.weekFolders || []);
+  const periodOrders = selectedWeeks.reduce(
+    (sum, week) => sum + (revenue.weeklyOrders?.[week] || 0),
+    0
+  );
+  const periodViews = d.ga4?.pageviews || 0;
+  const convRate = periodViews > 0 ? (periodOrders / periodViews * 100).toFixed(3) : '-';
   
   // 季度切换标签
   const quarterTabs = ['Q1','Q2','Q3','Q4'].map(q => 
@@ -1387,7 +1364,7 @@ function renderRevenueCard(d) {
       </div>
       <div class="kpi-grid kpi-grid-3">
         ${kpi('订单数', orderCount, `均单价 $${avgPrice}`, {formula: 'Order name去重计数', source: 'orders.csv → 筛选Order tag → Order name去重'})}
-        ${kpi('转化率', convRate + '%', `${orderCount}单 ÷ ${q1Views.toLocaleString()}浏览`, {formula: '订单数 ÷ 浏览量 × 100%', source: '订单数/页面浏览数'})}
+        ${kpi('本周期归因转化率', convRate + '%', `${periodOrders}单 ÷ ${periodViews.toLocaleString()}浏览`, {formula: '本周期归因订单 ÷ 本周期页面浏览量 × 100%', source: '订单明细/页面浏览数据'})}
         ${kpi('均单价', '$' + avgPrice.toLocaleString(), `${orderCount} 订单`, {formula: '总销售额 ÷ 订单数', source: 'orders.csv'})}
       </div>
       <div class="chart-container"><canvas id="revChart"></canvas></div>
@@ -1399,7 +1376,7 @@ function renderRevenueCard(d) {
         </table>
       </div>
       </div>
-      <div class="alert alert-info"><b>归因说明：</b>仅统计Shopify tag含/collections/${currentCat}的订单（首访归因）</div>
+      <div class="alert alert-info"><b>归因说明：</b>仅统计标准化后精确匹配 <code>/collections/${currentCat}</code> 的 Shopify tag；订单快照已按订单、日期、商品、数量和金额去重。</div>
     </div>
   </div>`;
 }
@@ -1428,13 +1405,19 @@ function renderCharts(d) {
   });
   const trafficWeeks = weeksWithTraffic.length > 0 ? weeksWithTraffic.slice(-8) : allWeeks.slice(-8);
   
-  // 收入图表：取有revenue的最近8周
-  const weeksWithRevenue = allWeeks.filter(w => {
-    const wd = catData[w];
-    const qRev = wd?.revenue?.[currentQuarter];
-    return wd && qRev && qRev.totalSales > 0;
+  // 收入按订单日期做季度切片；跨季度周只包含落在当前季度内的订单。
+  const quarterIndex = { Q1: 0, Q2: 3, Q3: 6, Q4: 9 }[currentQuarter];
+  const quarterStart = new Date(2026, quarterIndex, 1);
+  const quarterEnd = new Date(2026, quarterIndex + 3, 1);
+  const revenueWeeks = allWeeks.filter(w => {
+    const match = w.match(/^w\d+_(\d{4}-\d{2}-\d{2})$/);
+    if (!match) return false;
+    const weekStart = new Date(match[1] + 'T00:00:00');
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return weekStart < quarterEnd && weekEnd > quarterStart;
   });
-  const revenueWeeks = weeksWithRevenue.length > 0 ? weeksWithRevenue.slice(-8) : allWeeks.slice(-8);
+  const qRevenue = (d.revenue || {})[currentQuarter] || {};
   
   // 构建SEO图表数据
   const seoLabels = [];
@@ -1458,8 +1441,7 @@ function renderCharts(d) {
     const wd = catData[w];
     if (wd) {
       revLabels.push(wd.week || w.replace('w', 'W').split('_')[0]);
-      const qRev = wd.revenue?.[currentQuarter];
-      revenueData.push(qRev?.totalSales || 0);
+      revenueData.push(qRevenue.weeklySales?.[w] || 0);
     }
   }
   
@@ -1621,7 +1603,7 @@ function renderTables(d) {
       prodBody.innerHTML = products.map((p,i)=>`<tr>
         <td class="text-center text-muted">${i+1}</td>
         <td class="ellipsis">${p.name}</td>
-        <td class="text-center">${p.orders}</td>
+        <td class="text-center">${p.quantity || 0}</td>
         <td><div class="inline-bar"><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${p.sales/maxS*100}%;background:#22c55e"></div></div><span class="inline-bar-value">$${p.sales.toLocaleString()}</span><span class="inline-bar-pct">${Math.round(p.sales/totalSales*100)}%</span></div></td>
       </tr>`).join('');
     } else {
@@ -1672,8 +1654,7 @@ function setClickView(v, btn) {
 
 function setQuarter(q, btn) {
   currentQuarter = q;
-  const d = RAW.data[currentCat]?.[period];
-  if (d) renderDashboard(d);
+  renderAll();
 }
 
 /* 启动 */

@@ -17,6 +17,13 @@ from datetime import datetime, timedelta
 
 BASE_PATH = Path(__file__).parent.resolve()
 
+WEEK_FOLDER_PATTERN = re.compile(r'^w\d{2}_\d{4}-\d{2}-\d{2}$')
+NON_PRODUCT_TITLES = ('shipping protection', 'route', 'extended warranty')
+
+def has_week_data_files(folder):
+    """忽略 Finder 生成的 Icon 文件和没有 CSV 的未来占位周。"""
+    return any(file.is_file() and file.suffix.lower() == '.csv' for file in folder.iterdir())
+
 def parse_csv(filepath):
     """解析CSV文件"""
     data = []
@@ -86,7 +93,7 @@ def load_page_config():
     return config
 
 def load_orders_all():
-    """读取订单数据 - 自动查找最新的订单文件"""
+    """读取全部订单快照，并合并重叠导出中的同一商品行。"""
     orders_dir = Path('/Users/apple/Desktop/linkdolls dashboard/orders')
     
     if not orders_dir.exists():
@@ -107,8 +114,11 @@ def load_orders_all():
         print(f"目录中的文件: {[f.name for f in all_files]}")
         return []
     
-    # 读取所有订单文件并合并
-    orders = []
+    # 每一份 Shopify 导出都是历史快照，直接拼接会重复计算同一笔订单。
+    # 当前导出没有 line item id，故使用订单号、日期、产品、数量和金额作为
+    # 过渡去重键；同时合并同一商品行出现的多个归因 tag。
+    raw_orders = []
+    raw_rows = 0
     for filepath in files:
         orders_path = Path(filepath)
         print(f"📦 读取订单文件: {orders_path.name}")
@@ -116,9 +126,16 @@ def load_orders_all():
         with open(orders_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                orders.append(row)
-    
-    print(f"📦 共加载订单: {len(orders)} 行（{len(files)} 个文件）")
+                raw_rows += 1
+                row['_source_file'] = orders_path.name
+                raw_orders.append(row)
+
+    orders = deduplicate_order_rows(raw_orders)
+
+    print(
+        f"📦 订单行: 原始 {raw_rows} → 去重 {len(orders)} "
+        f"（{len(files)} 个文件，移除 {raw_rows - len(orders)} 条重叠行）"
+    )
     return orders
 
 # 全局缓存：row id → normalized keys 映射
@@ -163,6 +180,71 @@ def get_field(row, field, default=''):
 
     return default
 
+def parse_money(value):
+    """将 Shopify 的金额字段安全转换为浮点数。"""
+    try:
+        return float(str(value or 0).replace('$', '').replace(',', '').strip() or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+def parse_quantity(value):
+    """将订单数量转为整数；缺失数量按一件处理。"""
+    try:
+        return int(float(str(value or 1).replace(',', '').strip() or 1))
+    except (TypeError, ValueError):
+        return 1
+
+def split_order_tags(value):
+    """将可能合并在一个字段中的 tag 拆开并标准化。"""
+    return {
+        normalize_order_tag(tag)
+        for tag in re.split(r'[,;|]', str(value or ''))
+        if tag.strip()
+    }
+
+def get_order_tags(row):
+    """读取合并后 tag；兼容尚未经过导入去重的行。"""
+    tags = row.get('_order_tags')
+    return tags if tags is not None else split_order_tags(get_field(row, 'Order tag'))
+
+def order_line_key(row):
+    """生成 Shopify 缺少 line item id 时使用的稳定行键。"""
+    return (
+        get_field(row, 'Order name', '').strip(),
+        normalize_date(get_field(row, 'Day', '')),
+        get_field(row, 'Product title', '').strip().casefold(),
+        parse_quantity(get_field(row, '订购数量', '1')),
+        round(parse_money(get_field(row, 'Net sales', 0)), 2),
+        round(parse_money(get_field(row, 'Gross sales', 0)), 2),
+        round(parse_money(get_field(row, 'Total sales', 0)), 2),
+    )
+
+def deduplicate_order_rows(rows):
+    """合并重叠导出及同一商品行的多 tag 记录。"""
+    orders_by_key = {}
+    for row in rows:
+        key = order_line_key(row)
+        if key not in orders_by_key:
+            merged = dict(row)
+            merged['_order_tags'] = set(split_order_tags(get_field(row, 'Order tag')))
+            merged['_source_files'] = {row.get('_source_file', '')} - {''}
+            orders_by_key[key] = merged
+        else:
+            merged = orders_by_key[key]
+            merged['_order_tags'].update(split_order_tags(get_field(row, 'Order tag')))
+            source_file = row.get('_source_file', '')
+            if source_file:
+                merged['_source_files'].add(source_file)
+    return list(orders_by_key.values())
+
+def is_product_sale(row):
+    """仅保留可归因到商品的销售行，排除空行和保障/运费类项目。"""
+    title = get_field(row, 'Product title', '').strip()
+    if not title:
+        return False
+    title_lower = title.casefold()
+    return not any(excluded in title_lower for excluded in NON_PRODUCT_TITLES)
+
 def normalize_order_tag(tag):
     """去掉 Order tag 中的语言前缀，处理 Shopify 截断的特殊映射"""
     tag = tag.strip()
@@ -186,7 +268,10 @@ def calculate_revenue_by_category(orders_all, category):
     if category == 'linkdolls.com':
         url_path = 'linkdolls.com'
     
-    filtered = [o for o in orders_all if normalize_order_tag(get_field(o, 'Order tag')) == url_path]
+    filtered = [
+        o for o in orders_all
+        if is_product_sale(o) and url_path in get_order_tags(o)
+    ]
     
     quarter_months = {
         'Q1': ['01', '02', '03'],
@@ -216,22 +301,34 @@ def calculate_revenue_by_category(orders_all, category):
             }
             continue
         
-        total_sales = sum(float(get_field(o, 'Net sales', 0) or 0) for o in q_orders)
+        total_sales = sum(parse_money(get_field(o, 'Net sales', 0)) for o in q_orders)
         unique_orders = set(get_field(o, 'Order name', '') for o in q_orders)
         order_count = len(unique_orders)
         avg_price = round(total_sales / order_count, 2) if order_count > 0 else 0
         
-        product_sales = defaultdict(lambda: {'orders': 0, 'sales': 0})
+        product_sales = defaultdict(lambda: {'quantity': 0, 'sales': 0})
+        weekly_sales = defaultdict(float)
+        weekly_orders = defaultdict(set)
         for o in q_orders:
             product_title = get_field(o, 'Product title', '').strip()
-            if 'Shipping' in product_title:
-                continue
-            net_sales = float(get_field(o, 'Net sales', 0) or 0)
-            product_sales[product_title]['orders'] += 1
+            net_sales = parse_money(get_field(o, 'Net sales', 0))
+            product_sales[product_title]['quantity'] += parse_quantity(get_field(o, '订购数量', 1))
             product_sales[product_title]['sales'] += net_sales
+
+            day = normalize_date(get_field(o, 'Day', ''))
+            if day:
+                try:
+                    day_value = datetime.strptime(day, '%Y-%m-%d')
+                except ValueError:
+                    day_value = None
+                if day_value:
+                    week_start = day_value - timedelta(days=day_value.weekday())
+                    week_folder = f"w{week_start.isocalendar().week:02d}_{week_start:%Y-%m-%d}"
+                    weekly_sales[week_folder] += net_sales
+                    weekly_orders[week_folder].add(get_field(o, 'Order name', '').strip())
         
         products = sorted(
-            [{'name': k, 'orders': v['orders'], 'sales': round(v['sales'], 2)} for k, v in product_sales.items()],
+            [{'name': k, 'quantity': v['quantity'], 'sales': round(v['sales'], 2)} for k, v in product_sales.items()],
             key=lambda x: x['sales'],
             reverse=True
         )[:10]
@@ -241,14 +338,16 @@ def calculate_revenue_by_category(orders_all, category):
             day = get_field(o, 'Day', '').strip()
             if len(day) >= 7:
                 month = day[5:7]
-                monthly_sales[month] += float(get_field(o, 'Net sales', 0) or 0)
+                monthly_sales[month] += parse_money(get_field(o, 'Net sales', 0))
         
         result[q] = {
             'orders': order_count,
             'totalSales': round(total_sales, 2),
             'avgPrice': avg_price,
             'products': products,
-            'monthlySales': {m: round(monthly_sales.get(m, 0), 2) for m in months}
+            'monthlySales': {m: round(monthly_sales.get(m, 0), 2) for m in months},
+            'weeklySales': {week: round(sales, 2) for week, sales in weekly_sales.items()},
+            'weeklyOrders': {week: len(orders) for week, orders in weekly_orders.items()},
         }
     
     return result
@@ -673,12 +772,11 @@ def main():
     # 加载全部订单
     orders_all = load_orders_all()
     
-    # 收集分类
-    categories = []
-    for item in BASE_PATH.iterdir():
-        if not item.is_dir() or item.name.startswith('.') or item.name in ['config', 'orders', 'data', 'pageviews']:
-            continue
-        categories.append(item.name)
+    # 只聚合配置中声明的分类，避免把缓存/空目录当成业务分类。
+    categories = sorted(
+        category for category in page_config
+        if (BASE_PATH / category).is_dir()
+    )
     
     # 聚合数据
     all_data = {}
@@ -688,7 +786,11 @@ def main():
     for category in categories:
         cat_path = BASE_PATH / category
         for week_folder in cat_path.iterdir():
-            if week_folder.is_dir() and week_folder.name.startswith('w'):
+            if (
+                week_folder.is_dir()
+                and WEEK_FOLDER_PATTERN.match(week_folder.name)
+                and has_week_data_files(week_folder)
+            ):
                 weeks.add(week_folder.name)
     
     # 批量读取每个周的页面浏览数（所有分类共用，按精确路径匹配）
@@ -706,7 +808,11 @@ def main():
         revenue_data = calculate_revenue_by_category(orders_all, category)
         
         for week_folder in cat_path.iterdir():
-            if week_folder.is_dir() and week_folder.name.startswith('w'):
+            if (
+                week_folder.is_dir()
+                and WEEK_FOLDER_PATTERN.match(week_folder.name)
+                and has_week_data_files(week_folder)
+            ):
                 weeks.add(week_folder.name)
                 data = aggregate_week(category, week_folder.name)
                 
@@ -765,7 +871,7 @@ def main():
     }
 
     # 按周文件夹顺序生成周标签列表
-    week_folders_sorted = sorted(weeks, key=lambda w: int(re.match(r'w(\d+)', w).group(1)))
+    week_folders_sorted = sorted(weeks, key=lambda w: w.split('_', 1)[1])
     _pat = re.compile(r'w(\d+)')
     week_labels = ['W' + str(int(_pat.match(w).group(1))) for w in week_folders_sorted]
 
