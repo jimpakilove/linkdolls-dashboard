@@ -1045,6 +1045,10 @@ function aggregateWeeks(weekFolders) {
     }
   }
   base.cartAdds = Object.values(caMap).sort((a, b) => b.cartAdds - a.cartAdds).slice(0, 20);
+  const unavailableCart = weekFolders.filter(wf => catData[wf]?.cartStatus?.available !== true);
+  base.cartStatus = {available: !unavailableCart.length, reason: unavailableCart.map(wf =>
+    `${wf.split('_')[0].toUpperCase()}：${catData[wf]?.cartStatus?.reason || '缺少加购商品表状态'}`
+  ).join('；'), source: unavailableCart.map(wf => catData[wf]?.cartStatus?.source).filter(Boolean).join('；')};
   
   // Revenue is a date-range aggregate repeated on every weekly record.
   // Reusing it prevents a 4-week view from multiplying the quarterly total.
@@ -1661,10 +1665,14 @@ function renderTables(d) {
   const cartBody = document.getElementById('cartTable');
   if (cartBody) {
     const cartAdds = d.cartAdds || [];
-    if (cartAdds.length > 0) {
-      cartBody.innerHTML = cartAdds.map((p, i) => '<tr><td class="text-center text-muted">' + (i+1) + '</td><td class="ellipsis">' + p.name + '</td><td class="text-right">' + p.cartAdds + '</td></tr>').join('');
+    if (d.cartStatus?.available === false) {
+      cartBody.innerHTML = '<tr><td colspan="3" role="status" style="padding:16px;color:#92400e">加购商品明细不可用：'
+        + escapeText(d.cartStatus.reason) + (d.cartStatus.source ? '<br>文件：' + escapeText(d.cartStatus.source) : '')
+        + '</td></tr>';
+    } else if (cartAdds.length > 0) {
+      cartBody.innerHTML = cartAdds.map((p, i) => '<tr><td class="text-center text-muted">' + (i+1) + '</td><td class="ellipsis">' + escapeText(p.name) + '</td><td class="text-right">' + p.cartAdds + '</td></tr>').join('');
     } else {
-      cartBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted" style="padding:16px">暂无加购数据</td></tr>';
+      cartBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted" style="padding:16px">' + (d.cartStatus?.available === true ? '该周期没有加购次数大于 0 的商品' : '暂无加购数据') + '</td></tr>';
     }
   }
   if (funnelViz && d.conversion) {

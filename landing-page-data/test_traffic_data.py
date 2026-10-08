@@ -75,6 +75,42 @@ class TrafficDataTests(unittest.TestCase):
             'pageviews': 1457, 'activeUsers': 1216, 'available': True})
         self.assertEqual(result['full-doll']['pageviews'], 2576)
 
+    def cart(self, content):
+        (self.root / '电子商务购买_商品名称.csv').write_bytes(content)
+        return a.parse_cart_adds(self.root)
+
+    def test_cart_valid_bom_and_zero(self):
+        result = self.cart('\ufeff# 导出注释\n商品名称,加入购物车的商品数\nH001,0\nH002,3\n'.encode('utf-8'))
+        self.assertTrue(result['available'])
+        self.assertEqual(result['items'], [{'name': 'H002', 'cartAdds': 3}])
+        result = self.cart('商品名称,加入购物车的商品数\nH001,0\n'.encode('utf-8'))
+        self.assertTrue(result['available'])
+        self.assertEqual(result['items'], [])
+
+    def test_cart_corrupt_encoding_is_unavailable(self):
+        result = self.cart('商品名称,加入购物车的商品数\nH001,3\n'.encode('utf-8') + b'\xe3\x80?,1\n')
+        self.assertFalse(result['available'])
+        self.assertEqual(result['items'], [])
+        self.assertIn('编码损坏', result['reason'])
+        self.assertTrue(result['source'].endswith('电子商务购买_商品名称.csv'))
+
+    def test_cart_bad_header_or_row_never_returns_partial_total(self):
+        for content in ['商品名称,错误列\nH001,3\n',
+                        '商品名称,加入购物车的商品数\nH001,3\nH002,broken\n',
+                        '商品名称,加入购物车的商品数\nH001,3\nH002,\n',
+                        '商品名称,加入购物车的商品数\nH001,3\nH002,1,extra\n',
+                        '商品名称,加入购物车的商品数\nH001,3\n"H002,1\n']:
+            with self.subTest(content=content):
+                result = self.cart(content.encode('utf-8'))
+                self.assertFalse(result['available'])
+                self.assertEqual(result['items'], [])
+
+    def test_cart_missing_and_duplicate_files(self):
+        self.assertFalse(a.parse_cart_adds(self.root)['available'])
+        self.cart('商品名称,加入购物车的商品数\nH001,3\n'.encode('utf-8'))
+        (self.root / '电子商务购买_商品名称副本.csv').write_text('商品名称,加入购物车的商品数\n', encoding='utf-8')
+        self.assertIn('多份', a.parse_cart_adds(self.root)['reason'])
+
 
 if __name__ == '__main__':
     unittest.main()

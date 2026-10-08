@@ -169,14 +169,14 @@ def test_unknown_first_char_goes_to_other():
 def make_products_and_needed(entries):
     """
     entries: list of (product_name, code)
-    Returns (products dict, needed set) compatible with step3_match_orders.
+    Both collections are keyed by product code, like step1_read_ecommerce().
     """
     n_weeks = len(WEEK_NAMES)
     products = {}
     needed = set()
     for name, code in entries:
         letter = code[0].lower() if code else '?'
-        products[name] = {
+        products[code] = {
             'name': name, 'code': code,
             'category': letter, 'firstChar': letter,
             'weeklyViews': [10] * n_weeks,
@@ -184,7 +184,7 @@ def make_products_and_needed(entries):
             'weeklyOrderCount': [0] * n_weeks,
             'revenue': 0.0, 'orderCount': 0, 'totalRevenue': 0.0,
         }
-        needed.add(name)
+        needed.add(code)
     return products, needed
 
 
@@ -225,7 +225,7 @@ def test_code_match_exact():
     run_step3(products, needed, [
         row(day='2026-01-05', title='A599 (83lb) Sucking Doggy Style', net=299),
     ])
-    p = products['A599 Big Booty Sex Doll Torso']
+    p = products['a599']
     check('a599 matched: week 0 revenue = 299', p['weeklyRevenue'][0] == 299.0)
     check('a599 matched: orderCount = 1', p['orderCount'] == 1)
 
@@ -238,7 +238,7 @@ def test_code_no_partial_match():
     run_step3(products, needed, [
         row(day='2026-01-05', title='F6533 Bigger Doll', net=500),
     ])
-    p = products['F653 Some Doll']
+    p = products['f653']
     check('f6533 does NOT match f653', p['revenue'] == 0.0)
 
 
@@ -250,7 +250,7 @@ def test_code_no_reverse_partial_match():
     run_step3(products, needed, [
         row(day='2026-01-05', title='F653 Some Doll', net=500),
     ])
-    p = products['F6533 Bigger Doll']
+    p = products['f6533']
     check('f653 does NOT match f6533', p['revenue'] == 0.0)
 
 
@@ -262,8 +262,18 @@ def test_code_match_with_dash_suffix():
     run_step3(products, needed, [
         row(day='2026-01-05', title='A664-(37.5lb) Silicone Big Ass', net=399),
     ])
-    p = products['A664 Silicone Butt Torso']
+    p = products['a664']
     check('a664- title matches a664', p['weeklyRevenue'][0] == 399.0)
+
+
+def test_code_match_dedup_and_refund():
+    products, needed = make_products_and_needed([('A599 Product', 'a599')])
+    sale = row(order='#1', day='2026-01-05', title='A599 Product', net=299)
+    run_step3(products, needed, [sale, dict(sale),
+        row(order='#2', day='2026-01-12', title='A599 Product', net=-50)])
+    check('matching deduplicates identical rows', products['a599']['weeklyRevenue'][0] == 299)
+    check('matching preserves negative revenue', products['a599']['weeklyRevenue'][1] == -50)
+    check('matching net revenue reconciles', products['a599']['revenue'] == 249)
 
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -286,9 +296,8 @@ if __name__ == '__main__':
         test_code_no_partial_match()
         test_code_no_reverse_partial_match()
         test_code_match_with_dash_suffix()
+        test_code_match_dedup_and_refund()
 
-    print(f'\n{passed} passed, {failed} failed')
-    sys.exit(0 if failed == 0 else 1)
 
     print(f'\n{passed} passed, {failed} failed')
     sys.exit(0 if failed == 0 else 1)

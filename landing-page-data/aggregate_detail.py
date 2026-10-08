@@ -692,33 +692,48 @@ def parse_landing_page_stats(week_folder, category):
     return result
 
 def parse_cart_adds(week_path):
-    # ... 保持不变 ...
-    result = []
-    if not week_path.exists():
-        return result
-    import glob
-    pattern = str(week_path / '电子商务购买_商品名称*.csv')
-    files = glob.glob(pattern)
+    """Fail closed on corrupt exports; an unreadable file is not zero cart adds."""
+    result = {'items': [], 'available': False, 'reason': '缺少该周加购商品表', 'source': ''}
+    files = sorted(week_path.glob('电子商务购买_商品名称*.csv'))
     if not files:
         return result
+    if len(files) != 1:
+        result['reason'] = '同周存在多份加购商品表，请确认保留哪份数据'
+        return result
     target_file = files[0]
+    result['source'] = '/'.join(target_file.parts[-3:])
     try:
-        with open(target_file, 'r', encoding='utf-8') as f:
+        with open(target_file, 'r', encoding='utf-8-sig') as f:
             lines = [line for line in f if not line.strip().startswith('#') and line.strip()]
             if not lines:
+                result['reason'] = '加购商品表为空，请重新导出'
                 return result
             from io import StringIO
-            reader = csv.DictReader(StringIO(''.join(lines)))
+            reader = csv.DictReader(StringIO(''.join(lines)), strict=True)
+            required = {'商品名称', '加入购物车的商品数'}
+            if not required.issubset(reader.fieldnames or []):
+                result['reason'] = '加购商品表缺少商品名称或加入购物车的商品数字段，请重新导出'
+                return result
+            items = []
             for row in reader:
+                if None in row or any(value is None for value in row.values()):
+                    raise ValueError('字段数量与表头不一致')
                 product_name = row.get('商品名称', '').strip()
                 if not product_name:
                     continue
-                cart_adds = int(row.get('加入购物车的商品数', 0) or 0)
+                cart_adds = int(row['加入购物车的商品数'])
+                if cart_adds < 0:
+                    raise ValueError('加购次数为负数')
                 if cart_adds > 0:
-                    result.append({'name': product_name[:80], 'cartAdds': cart_adds})
-            result.sort(key=lambda x: x['cartAdds'], reverse=True)
-    except Exception as e:
-        print(f"读取加购商品数据失败：{e}")
+                    items.append({'name': product_name[:80], 'cartAdds': cart_adds})
+            result.update(items=sorted(items, key=lambda x: x['cartAdds'], reverse=True),
+                          available=True, reason='')
+    except UnicodeError:
+        result['reason'] = '加购商品表编码损坏，无法可靠读取，请重新导出 UTF-8 CSV 原文件'
+    except (csv.Error, ValueError):
+        result['reason'] = '加购商品表结构或数值损坏，无法可靠读取，请重新导出'
+    except OSError:
+        result['reason'] = '加购商品表无法读取，请检查文件权限或重新导出'
     return result
 
 def parse_pageviews_global(week_folder, page_config=None):
@@ -812,7 +827,8 @@ def aggregate_week(category, week_folder):
     if landing_data:
         result['landingPage'] = landing_data
     cart_data = parse_cart_adds(week_path)
-    result['cartAdds'] = cart_data[:20]
+    result['cartAdds'] = cart_data.pop('items')[:20]
+    result['cartStatus'] = cart_data
     return result
 
 # ==================== main ====================

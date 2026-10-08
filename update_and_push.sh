@@ -35,6 +35,8 @@ echo ""
 echo "📊 步骤 2/3  更新分类页看板数据..."
 python3 aggregate_detail.py
 python3 -B -m unittest test_traffic_data.py
+python3 -B test_category_revenue.py
+python3 -B test_revenue_aggregation.py
 if command -v node >/dev/null 2>&1; then
     node test_traffic_render.cjs
 fi
@@ -60,6 +62,8 @@ git add landing-page-data/dashboard.html \
         landing-page-data/update_pdp.py \
         landing-page-data/test_traffic_data.py \
         landing-page-data/test_traffic_render.cjs \
+        landing-page-data/test_category_revenue.py \
+        landing-page-data/test_revenue_aggregation.py \
         update_and_push.sh
 
 git diff --cached --quiet && echo "⚠ 没有变更，跳过 commit" || \

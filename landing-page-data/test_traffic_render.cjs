@@ -58,6 +58,22 @@ const complete = vm.runInContext("RAW=fixture;aggregateWeeks(['a','b'])", ctx);
 assert.equal(complete.landingPage.sessions, 1946);
 assert.equal(complete.deviceStatus.available, false);
 assert.equal(complete.gsc.clicks, 1148);
+// The cart table must distinguish corrupt exports, genuine zero, and partial periods.
+const cartElement = {innerHTML: ''};
+ctx.document = {getElementById: id => id === 'cartTable' ? cartElement : null};
+ctx.input = data.data['sex-doll-head']['w30_2026-07-20'];
+vm.runInContext('renderTables(input)', ctx);
+assert.ok(cartElement.innerHTML.includes('编码损坏'));
+assert.ok(cartElement.innerHTML.includes('sex-doll-head/w30_2026-07-20/'));
+assert.ok(!cartElement.innerHTML.includes('暂无加购数据'));
+ctx.input = {...home, cartAdds: [], cartStatus: {available:true}};
+vm.runInContext('renderTables(input)', ctx);
+assert.ok(cartElement.innerHTML.includes('没有加购次数大于 0'));
+ctx.fixture = {data:{test:{a:home,b:data.data['sex-doll-head']['w30_2026-07-20']}}};
+ctx.input = vm.runInContext("RAW=fixture;currentCat='test';aggregateWeeks(['a','b'])", ctx);
+assert.equal(ctx.input.cartStatus.available, false);
+vm.runInContext('renderTables(input)', ctx);
+assert.ok(cartElement.innerHTML.includes('编码损坏'));
 let count = 0;
 for (const weeks of Object.values(data.data)) {
   for (const record of Object.values(weeks)) {
