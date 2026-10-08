@@ -1272,11 +1272,20 @@ function formatDuration(seconds) {
 }
 
 /* 漏斗卡片 */
+function cartTableMarkup() {
+  return `<div class="table-container" style="margin-top:16px">
+    <div class="card-title" style="font-size:14px;margin-bottom:8px">🛒 加购商品列表</div>
+    <table class="data-table">
+      <thead><tr><th class="text-center col-rank">#</th><th>产品名称</th><th class="text-right col-num">加购次数</th></tr></thead>
+      <tbody id="cartTable"></tbody>
+    </table>
+  </div>`;
+}
 function renderFunnelCard(d) {
   const conv = d.conversion || {};
   const devices = Object.keys(conv);
   
-  if (!devices.length) return `<div class="card"><div class="card-header"><div class="card-title funnel">转化漏斗</div></div><div class="card-body"><div class="empty-state" style="padding:32px"><div class="empty-state-title">暂无数据</div></div></div></div>`;
+  if (!devices.length) return `<div class="card"><div class="card-header"><div class="card-title funnel">转化漏斗</div></div><div class="card-body"><div class="empty-state" style="padding:32px"><div class="empty-state-title">暂无漏斗数据</div></div>${cartTableMarkup()}</div></div>`;
   
   const total = {sessions:0,viewProduct:0,addToCart:0,checkout:0,purchase:0};
   for (const dev of devices) for (const k in total) total[k] += conv[dev][k] || 0;
@@ -1309,13 +1318,7 @@ function renderFunnelCard(d) {
       </div>
       
       <!-- 加购商品列表 -->
-      <div class="table-container" style="margin-top:16px">
-        <div class="card-title" style="font-size:14px;margin-bottom:8px">🛒 加购商品列表</div>
-        <table class="data-table">
-          <thead><tr><th class="text-center col-rank">#</th><th>产品名称</th><th class="text-right col-num">加购次数</th></tr></thead>
-          <tbody id="cartTable"></tbody>
-        </table>
-      </div>
+      ${cartTableMarkup()}
     </div>
   </div>`;
 }

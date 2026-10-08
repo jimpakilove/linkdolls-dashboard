@@ -62,6 +62,8 @@ assert.equal(complete.gsc.clicks, 1148);
 const cartElement = {innerHTML: ''};
 ctx.document = {getElementById: id => id === 'cartTable' ? cartElement : null};
 ctx.input = data.data['sex-doll-head']['w30_2026-07-20'];
+const noFunnel = vm.runInContext('renderFunnelCard(input)', ctx);
+assert.ok(noFunnel.includes('id="cartTable"'), 'cart list must exist even without funnel data');
 vm.runInContext('renderTables(input)', ctx);
 assert.ok(cartElement.innerHTML.includes('编码损坏'));
 assert.ok(cartElement.innerHTML.includes('sex-doll-head/w30_2026-07-20/'));
