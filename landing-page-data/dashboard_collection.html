@@ -624,6 +624,21 @@ function kpi(label, value, sub, info) {
   </div>`;
 }
 
+function escapeText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function metricValue(group, key, format = v => v.toLocaleString()) {
+  return group?.available === false || !Number.isFinite(group?.[key]) ? '—' : format(group[key]);
+}
+function metricNote(group, key, fallback) {
+  return escapeText(group?.available === false ? group.reason || '数据不可用' : group?.missingFields?.[key] || fallback);
+}
+function clickRate(d, clicks, digits = 1) {
+  const pv = d.ga4?.pageviews;
+  return d.ga4?.available === false || !Number.isFinite(pv) || pv <= 0
+    ? '—' : (clicks / pv * 100).toFixed(digits) + '%';
+}
+
 /* 刷新数据 */
 async function refreshData() {
   const btn = document.getElementById('refreshBtn');
@@ -669,7 +684,7 @@ async function refreshData() {
 /* 加载数据 */
 async function loadData() {
   try {
-    const r = await fetch('dashboard_detail.json');
+    const r = await fetch('dashboard_detail.json', {cache: 'no-store'});
     if (!r.ok) throw new Error('HTTP ' + r.status + ': 无法加载 dashboard_detail.json');
     RAW = await r.json();
   } catch(e) {
@@ -898,6 +913,9 @@ function aggregateWeeks(weekFolders) {
   }
   base.ga4.pageviews = totalPv;
   base.ga4.activeUsers = totalAu;
+  const missingPv = weekFolders.filter(wf => !catData[wf]?.ga4 || catData[wf].ga4.available === false);
+  base.ga4.available = missingPv.length === 0;
+  base.ga4.reason = missingPv.length ? `缺少 ${missingPv.map(w => w.split('_')[0].toUpperCase()).join('、')} 的当前页面浏览数据` : '';
   
   // LandingPage: sessions, visitors, addToCart, checkout, purchase sum; bounceRate, pageviewsPerSession, avgSessionDuration weighted by sessions
   let totalSess = 0, totalVisitors = 0, totalAtc = 0, totalChk = 0, totalPur = 0;
@@ -922,6 +940,26 @@ function aggregateWeeks(weekFolders) {
   base.landingPage.bounceRate = totalSess > 0 ? (bounceWeighted / totalSess) : 0;
   base.landingPage.pageviewsPerSession = totalSess > 0 ? (ppsWeighted / totalSess) : 0;
   base.landingPage.avgSessionDuration = totalSess > 0 ? (durWeighted / totalSess) : 0;
+  // A partial period must not masquerade as a complete period or a genuine zero.
+  base.landingPage.missingFields = {};
+  base.landingPage.available = true;
+  for (const key of ['sessions', 'visitors', 'addToCart', 'checkout', 'purchase', 'bounceRate', 'pageviewsPerSession', 'avgSessionDuration']) {
+    const missing = weekFolders.filter(wf => {
+      const lp = catData[wf]?.landingPage;
+      return !lp || lp.available === false || !Number.isFinite(lp[key]);
+    });
+    if (missing.length) {
+      base.landingPage[key] = null;
+      base.landingPage.missingFields[key] = `缺少 ${missing.map(w => w.split('_')[0].toUpperCase()).join('、')} 的该指标，无法完整汇总`;
+    }
+  }
+  const missingGsc = weekFolders.filter(wf => !catData[wf]?.gsc || catData[wf].gsc.available === false);
+  base.gsc.available = missingGsc.length === 0;
+  base.gsc.reason = missingGsc.length ? `缺少 ${missingGsc.map(w => w.split('_')[0].toUpperCase()).join('、')} 的当前页面搜索数据` : '';
+  for (const key of ['deviceStatus', 'gscScope']) {
+    const unavailable = weekFolders.filter(wf => !catData[wf] || catData[wf][key]?.available === false);
+    base[key] = {available: !unavailable.length, reason: unavailable.length ? `${unavailable.map(w => w.split('_')[0].toUpperCase()).join('、')} 数据缺失或导出范围不匹配，需重新导出` : ''};
+  }
   
   // Queries: merge by kw, sum clicks & imp, recalc ctr and rank
   const qMap = {};
@@ -1090,7 +1128,7 @@ function renderDashboard(d) {
 function renderGSCCard(d) {
   const gsc = d.gsc || {};
   const queries = d.queries || [];
-  const devices = d.devices || [];
+  const devices = d.deviceStatus?.available === false ? [] : (d.devices || []);
   
   const mobile = devices.find(x => x.device === 'mobile') || {};
   const desktop = devices.find(x => x.device === 'desktop') || {};
@@ -1107,11 +1145,12 @@ function renderGSCCard(d) {
     </div>
     <div class="card-body">
       <div class="kpi-grid kpi-grid-4">
-        ${kpi('总点击', gsc.clicks.toLocaleString(), '自然搜索', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
-        ${kpi('总曝光', gsc.impressions.toLocaleString(), `覆盖 ${queries.length} 个关键词`, {formula: '展示次数求和', source: 'GSC → 网页.csv → 展示'})}
-        ${kpi('平均CTR', gsc.ctr.toFixed(2) + '%', `移动${mobile.ctr || '-'} / 桌面${desktop.ctr || '-'}`, {formula: '点击数 ÷ 展示数 × 100%', source: 'GSC → 网页.csv → 点击率'})}
-        ${kpi('平均排名', gsc.rank.toFixed(1), `移动${mobile.rank?.toFixed(1) || '-'} / 桌面${desktop.rank?.toFixed(1) || '-'}`, {formula: '排名靠前的网页平均排名', source: 'GSC → 网页.csv → 排名'})}
+        ${kpi('总点击', metricValue(gsc, 'clicks'), metricNote(gsc, 'clicks', '当前页面自然搜索'), {formula: '精确网址对应的点击次数', source: 'GSC → 网页.csv → 点击次数'})}
+        ${kpi('总曝光', metricValue(gsc, 'impressions'), metricNote(gsc, 'impressions', `导出表含 ${queries.length} 个关键词`), {formula: '精确网址对应的展示次数', source: 'GSC → 网页.csv → 展示'})}
+        ${kpi('平均CTR', metricValue(gsc, 'ctr', v => v.toFixed(2) + '%'), metricNote(gsc, 'ctr', `移动${mobile.ctr || '-'} / 桌面${desktop.ctr || '-'}`), {formula: '点击数 ÷ 展示数 × 100%', source: 'GSC → 网页.csv → 点击率'})}
+        ${kpi('平均排名', metricValue(gsc, 'rank', v => v.toFixed(1)), metricNote(gsc, 'rank', `移动${mobile.rank?.toFixed(1) || '-'} / 桌面${desktop.rank?.toFixed(1) || '-'}`), {formula: '当前页面平均排名', source: 'GSC → 网页.csv → 排名'})}
       </div>
+      ${d.gscScope?.available === false ? `<div class="kpi-sub" role="status" style="padding:12px;color:#92400e">注意：${escapeText(d.gscScope.reason)}。以下关键词仍为原导出范围，不代表当前页面；设备占比暂不展示。</div>` : ''}
       <div class="kpi-grid kpi-grid-4">
         ${kpi('Top3词数', top3, queries.find(q => q.tag === 'top3')?.kw?.substring(0,18) || '-', {formula: '排名 ≤ 3 的关键词数量', source: 'GSC → 查询数.csv → 排名筛选'})}
         ${kpi('Top10词数', top10, '含Top3', {formula: '排名 ≤ 10 的关键词数量', source: 'GSC → 查询数.csv → 排名筛选'})}
@@ -1149,9 +1188,12 @@ function renderSEOCard(d) {
   const gsc = d.gsc || {};
   const devices = d.devices || [];
   
-  const totalClicks = devices.reduce((s, x) => s + x.clicks, 0) || 1;
-  const mobileClicks = devices.find(x => x.device === 'mobile')?.clicks || 0;
-  const mobilePct = Math.round(mobileClicks / totalClicks * 100);
+  const lp = d.landingPage || {};
+  const totalClicks = devices.reduce((s, x) => s + x.clicks, 0);
+  const mobileClicks = devices.find(x => ['mobile', '移动设备'].includes(x.device))?.clicks || 0;
+  const deviceAvailable = d.deviceStatus?.available !== false && devices.length > 0 && totalClicks > 0;
+  const mobilePct = deviceAvailable ? Math.round(mobileClicks / totalClicks * 100) + '%' : '—';
+  const deviceNote = !deviceAvailable ? d.deviceStatus?.reason || (totalClicks === 0 && devices.length ? '总点击为0，无法计算占比' : '缺少设备数据') : `${mobileClicks.toLocaleString()} / ${totalClicks.toLocaleString()} 搜索点击`;
   
   return `<div class="card">
     <div class="card-header">
@@ -1160,16 +1202,16 @@ function renderSEOCard(d) {
     </div>
     <div class="card-body">
       <div class="kpi-grid kpi-grid-4">
-        ${kpi('页面浏览', ga4.pageviews.toLocaleString(), `${ga4.activeUsers.toLocaleString()} 活跃用户`, {formula: '浏览次数求和', source: 'GA4 → 页面浏览数.csv → 浏览次数'})}
-        ${kpi('访问次数', (d.landingPage?.sessions || 0).toLocaleString(), 'Sessions', {formula: 'Shopify 访问', source: 'Shopify → 按登陆页面'})}
-        ${kpi('访问用户', (d.landingPage?.visitors || 0).toLocaleString(), 'Visitors', {formula: '在线商店访客', source: 'Shopify → 按登陆页面'})}
-        ${kpi('GSC点击', gsc.clicks.toLocaleString(), '自然搜索流入', {formula: '点击次数求和', source: 'GSC → 网页.csv → 点击次数'})}
+        ${kpi('页面浏览', metricValue(ga4, 'pageviews'), metricNote(ga4, 'pageviews', `${(ga4.activeUsers || 0).toLocaleString()} 活跃用户`), {formula: '浏览次数求和', source: 'GA4 → 页面浏览数.csv → 浏览次数'})}
+        ${kpi('访问次数', metricValue(lp, 'sessions'), metricNote(lp, 'sessions', 'Sessions'), {formula: 'Shopify 访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('访问用户', metricValue(lp, 'visitors'), metricNote(lp, 'visitors', 'Visitors'), {formula: '在线商店访客', source: 'Shopify → 按登陆页面'})}
+        ${kpi('GSC点击', metricValue(gsc, 'clicks'), metricNote(gsc, 'clicks', '当前页面自然搜索流入'), {formula: '精确网址对应的点击次数', source: 'GSC → 网页.csv → 点击次数'})}
       </div>
       <div class="kpi-grid kpi-grid-4">
-        ${kpi('跳出率', ((d.landingPage?.bounceRate || 0)*100).toFixed(1) + '%', 'Bounce Rate', {formula: '跳出访问 ÷ 总访问', source: 'Shopify → 按登陆页面'})}
-        ${kpi('每次访问浏览', (d.landingPage?.pageviewsPerSession || 0).toFixed(2), 'PV/Session', {formula: '页面浏览 ÷ 访问', source: 'Shopify → 按登陆页面'})}
-        ${kpi('平均时长', formatDuration(d.landingPage?.avgSessionDuration || 0), 'Avg Session', {formula: '总时长 ÷ 访问', source: 'Shopify → 按登陆页面'})}
-        ${kpi('移动端占比', mobilePct + '%', `${mobileClicks.toLocaleString()} / ${totalClicks.toLocaleString()} 点击`, {formula: '移动端点击 ÷ 总点击', source: 'GSC → 设备.csv'})}
+        ${kpi('跳出率', metricValue(lp, 'bounceRate', v => (v*100).toFixed(1) + '%'), metricNote(lp, 'bounceRate', 'Bounce Rate'), {formula: '跳出访问 ÷ 总访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('每次访问浏览', metricValue(lp, 'pageviewsPerSession', v => v.toFixed(2)), metricNote(lp, 'pageviewsPerSession', 'PV/Session'), {formula: '着陆页会话内浏览量 ÷ 访问次数，不是上方 GA4 浏览量除以访问次数', source: 'Shopify → 按登陆页面'})}
+        ${kpi('平均时长', metricValue(lp, 'avgSessionDuration', formatDuration), metricNote(lp, 'avgSessionDuration', 'Avg Session'), {formula: '总时长 ÷ 访问', source: 'Shopify → 按登陆页面'})}
+        ${kpi('移动端占比', mobilePct, escapeText(deviceNote), {formula: '当前页面移动端搜索点击 ÷ 搜索总点击', source: 'GSC → 设备.csv'})}
       </div>
       <div class="chart-container"><canvas id="trafficChart"></canvas></div>
   </div>`;
@@ -1178,7 +1220,7 @@ function renderSEOCard(d) {
 /* 点击卡片 */
 function renderClickCard(d) {
   const clicks = d.clicks || [];
-  const views = d.ga4?.pageviews || 1;
+  const views = metricValue(d.ga4, 'pageviews');
   
   if (!clicks.length) return `<div class="card"><div class="card-header"><div class="card-title click">页面元素点击</div></div><div class="card-body"><div class="empty-state" style="padding:32px"><div class="empty-state-title">暂无数据</div></div></div></div>`;
   
@@ -1189,13 +1231,13 @@ function renderClickCard(d) {
   return `<div class="card">
     <div class="card-header">
       <div class="card-title click">页面元素点击率</div>
-      <span class="card-badge">CTR = 点击 ÷ 浏览(${views.toLocaleString()})</span>
+      <span class="card-badge">CTR = 点击 ÷ 浏览(${views})</span>
     </div>
     <div class="card-body">
       <div class="kpi-grid kpi-grid-3">
-        ${kpi('导航 · 汇总 CTR', `<span style="color:var(--primary)">${(navClicks/views*100).toFixed(1)}%</span>`, `${navClicks} 次点击`, {formula: '导航类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=导航'})}
-        ${kpi('产品卡片 · 汇总CTR', `<span style="color:var(--success)">${(prodClicks/views*100).toFixed(1)}%</span>`, `${prodClicks} 次点击`, {formula: '产品类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=产品'})}
-        ${kpi('筛选器 · 汇总CTR', `<span style="color:var(--info)">${(filtClicks/views*100).toFixed(1)}%</span>`, `${filtClicks} 次点击`, {formula: '筛选器类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=筛选器'})}
+        ${kpi('导航 · 汇总 CTR', `<span style="color:var(--primary)">${clickRate(d, navClicks)}</span>`, `${navClicks} 次点击`, {formula: '导航类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=导航'})}
+        ${kpi('产品卡片 · 汇总CTR', `<span style="color:var(--success)">${clickRate(d, prodClicks)}</span>`, `${prodClicks} 次点击`, {formula: '产品类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=产品'})}
+        ${kpi('筛选器 · 汇总CTR', `<span style="color:var(--info)">${clickRate(d, filtClicks)}</span>`, `${filtClicks} 次点击`, {formula: '筛选器类型点击 ÷ 页面浏览 × 100%', source: 'GA4 → 页面元素点击数.csv → 类型=筛选器'})}
       </div>
       <div class="filter-tabs">
         <button class="filter-tab ${clickView==='top20'?'active':''}" onclick="setClickView('top20',this)">前20元素</button>
@@ -1430,8 +1472,8 @@ function renderCharts(d) {
     const wd = catData[w];
     if (wd) {
       seoLabels.push(wd.week || w.replace('w', 'W').split('_')[0]);
-      pageviewsData.push(wd.ga4?.pageviews || 0);
-      clicksData.push(wd.gsc?.clicks || 0);
+      pageviewsData.push(wd.ga4?.available === false ? null : wd.ga4?.pageviews ?? null);
+      clicksData.push(wd.gsc?.available === false ? null : wd.gsc?.clicks ?? null);
     }
   }
   
@@ -1582,14 +1624,13 @@ function renderTables(d) {
     if (clickView === 'nav') data = data.filter(c => c.type === 'n');
     if (clickView === 'product') data = data.filter(c => c.type === 'p');
     if (clickView === 'filter') data = data.filter(c => c.type === 'f');
-    const views = d.ga4?.pageviews || 1;
     const maxC = data.length ? Math.max(...data.map(c=>c.clicks),1) : 1;
     clickBody.innerHTML = data.slice(0,20).map((c,i)=>`<tr>
       <td class="text-center text-muted">${i+1}</td>
       <td>${c.type==='n'?'<span class="badge badge-nav">导航</span>':(c.type==='p'?'<span class="badge badge-prod">产品</span>':'<span class="badge badge-filter">筛选</span>')}</td>
       <td class="ellipsis">${c.name}</td>
       <td class="text-right">${c.clicks}</td>
-      <td><div class="inline-bar"><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${c.clicks/maxC*100}%;background:${c.type==='n'?'#3b82f6':(c.type==='p'?'#22c55e':'#7c3aed')}"></div></div><span class="inline-bar-value">${(c.clicks/views*100).toFixed(2)}%</span></div></td>
+      <td><div class="inline-bar"><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${c.clicks/maxC*100}%;background:${c.type==='n'?'#3b82f6':(c.type==='p'?'#22c55e':'#7c3aed')}"></div></div><span class="inline-bar-value">${clickRate(d, c.clicks, 2)}</span></div></td>
     </tr>`).join('');
   }
   

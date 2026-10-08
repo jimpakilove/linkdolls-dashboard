@@ -3,10 +3,21 @@
 # 用法：bash update_and_push.sh
 # 或双击运行（需先授权：chmod +x update_and_push.sh）
 
-set -e  # 任何步骤失败立即停止
+set -euo pipefail  # 任何步骤失败立即停止
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/landing-page-data"
+
+# 不把其他工作已暂存的文件混入本次发布。
+cd "$SCRIPT_DIR"
+if ! git diff --cached --quiet; then
+    echo "❌ 暂存区有其他改动，请先处理后再运行，避免误提交。"
+    exit 1
+fi
+if [ "$(git branch --show-current)" != "main" ]; then
+    echo "❌ 请在 main 分支运行，避免推送的不是刚生成的数据。"
+    exit 1
+fi
 
 echo "============================================================"
 echo "  LinkDolls 数据看板 — 每周更新"
@@ -23,21 +34,33 @@ python3 update_pdp.py
 echo ""
 echo "📊 步骤 2/3  更新分类页看板数据..."
 python3 aggregate_detail.py
+python3 -B -m unittest test_traffic_data.py
+if command -v node >/dev/null 2>&1; then
+    node test_traffic_render.cjs
+fi
 
 # ── 步骤 3：推送到 GitHub ──────────────────────────────────────
 echo ""
 echo "🚀 步骤 3/3  推送到 GitHub..."
 cd "$SCRIPT_DIR"
 
-# 取本周周次作为 commit 信息（ISO week number）
-WEEK_NUM=$(python3 -c "from datetime import date; print(f'W{date.today().isocalendar()[1]}')")
+# 使用数据中的最新周期，不把运行日期所在周误当作数据周。
+WEEK_NUM=$(python3 -c "import json; d=json.load(open('landing-page-data/dashboard_detail.json')); w=max(d['stats']['weeks'], key=lambda w:w.split('_',1)[1]); print(w.split('_')[0].upper())")
 COMMIT_MSG="data: 更新 ${WEEK_NUM} 周数据 $(date '+%Y-%m-%d')"
 
 git add landing-page-data/dashboard.html \
         landing-page-data/dashboard_detail.json \
         landing-page-data/top50_data.json \
         landing-page-data/category_data.json \
-        landing-page-data/dashboard_top50.html
+        landing-page-data/category_revenue.json \
+        landing-page-data/dashboard_top50.html \
+        landing-page-data/dashboard_collection.html \
+        landing-page-data/dashboard_click_rate.html \
+        landing-page-data/aggregate_detail.py \
+        landing-page-data/update_pdp.py \
+        landing-page-data/test_traffic_data.py \
+        landing-page-data/test_traffic_render.cjs \
+        update_and_push.sh
 
 git diff --cached --quiet && echo "⚠ 没有变更，跳过 commit" || \
     git commit -m "$COMMIT_MSG"

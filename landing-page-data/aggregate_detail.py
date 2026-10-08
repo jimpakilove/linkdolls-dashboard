@@ -14,11 +14,42 @@ import csv
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
 BASE_PATH = Path(__file__).parent.resolve()
 
 WEEK_FOLDER_PATTERN = re.compile(r'^w\d{2}_\d{4}-\d{2}-\d{2}$')
 NON_PRODUCT_TITLES = ('shipping protection', 'route', 'extended warranty')
+
+def page_paths(category):
+    """Explicit source-path aliases; never confuse the homepage with a collection."""
+    if category == 'linkdolls.com':
+        return ['/']
+    if category == 'in-stock-usa':
+        return ['/collections/in-stock-usa', '/collections/in-stock-usa-1']
+    if category == 'sex-doll-videos':
+        return ['/pages/sex-doll-videos', '/collections/sex-doll-videos']
+    return [f'/collections/{category}']
+
+def is_target_url(url, category):
+    parsed = urlsplit(url)
+    return (parsed.hostname in ('linkdolls.com', 'www.linkdolls.com')
+            and not parsed.query
+            and (parsed.path.rstrip('/') or '/') in page_paths(category))
+
+def gsc_scope_status(week_path, category):
+    """Device/query exports cannot be split back into pages after aggregation."""
+    rows = parse_csv(week_path / '网页.csv')
+    urls = [r['排名靠前的网页'] for r in rows if r.get('排名靠前的网页')]
+    if any(not is_target_url(url, category) for url in urls):
+        return {'available': False, 'reason': '导出包含其他页面，需按当前页面完整网址精确筛选后重新导出'}
+    filters = parse_csv(week_path / '过滤器.csv')
+    page_filter = next((r.get('值', '') for r in filters if r.get('过滤器') == '网页'), '')
+    if category == 'linkdolls.com' and page_filter.startswith('+'):
+        return {'available': False, 'reason': '首页使用包含匹配，需精确筛选首页后重新导出'}
+    if not urls:
+        return {'available': False, 'reason': '缺少网页范围数据，无法核验设备统计范围'}
+    return {'available': True, 'reason': ''}
 
 def has_week_data_files(folder):
     """忽略 Finder 生成的 Icon 文件和没有 CSV 的未来占位周。"""
@@ -550,7 +581,7 @@ def parse_devices(filepath):
     for row in parse_csv(filepath):
         if row.get('设备'):
             devices.append({
-                'device': row['设备'],
+                'device': {'移动设备': 'mobile', '桌面': 'desktop', '平板电脑': 'tablet'}.get(row['设备'], row['设备']),
                 'clicks': int(row.get('点击次数', 0) or 0),
                 'impressions': int(row.get('展示', 0) or 0),
                 'ctr': row.get('点击率', '0%'),
@@ -584,17 +615,19 @@ def parse_queries(filepath):
             queries.append({'kw': row['热门查询'], 'rank': round(rank, 2), 'clicks': clicks, 'imp': imp, 'ctr': round(ctr, 1), 'tag': tag})
     return queries
 
-def parse_webpage(filepath):
+def parse_webpage(filepath, category):
     # ... 保持不变 ...
-    result = {'clicks': 0, 'impressions': 0, 'ctr': 0, 'rank': 0, 'url': ''}
+    result = {'clicks': 0, 'impressions': 0, 'ctr': 0, 'rank': 0, 'url': '',
+              'available': False, 'reason': '缺少网页.csv' if not filepath.exists() else '网页.csv 未匹配到当前页面网址'}
     for row in parse_csv(filepath):
-        if row.get('排名靠前的网页'):
+        if row.get('排名靠前的网页') and is_target_url(row['排名靠前的网页'], category):
             result['url'] = row['排名靠前的网页']
             result['clicks'] = int(row.get('点击次数', 0) or 0)
             result['impressions'] = int(row.get('展示', 0) or 0)
             ctr_str = row.get('点击率', '0%') or '0%'
             result['ctr'] = float(ctr_str.replace('%', ''))
             result['rank'] = float(row.get('排名', 0) or 0)
+            result.update(available=True, reason='')
             break
     return result
 
@@ -608,7 +641,7 @@ def _get_landing_field(row, cn_field, en_field):
 
 def parse_landing_page_stats(week_folder, category):
     # ... 保持不变 ...
-    result = {}
+    result = {'available': False, 'reason': '缺少该周着陆页访问表', 'missingFields': {}}
     stats_dir = BASE_PATH / 'pageviews'
     if not stats_dir.exists():
         return result
@@ -621,27 +654,41 @@ def parse_landing_page_stats(week_folder, category):
     files = glob.glob(pattern)
     if not files:
         return result
+    if len(files) != 1:
+        result['reason'] = '同周存在多份着陆页访问表，需确认数据来源'
+        return result
     target_file = files[0]
-    target_path = f'/collections/{category}'
+    target_paths = page_paths(category)
+    result['reason'] = '着陆页访问表未匹配到当前页面路径'
     try:
-        with open(target_file, 'r', encoding='utf-8') as f:
+        with open(target_file, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 page_path = _get_landing_field(row, '登陆页面路径', 'Landing page path').strip()
-                if page_path == target_path:
-                    result = {
-                        'sessions': int(_get_landing_field(row, '访问', 'Sessions') or 0),
-                        'visitors': int(_get_landing_field(row, '在线商店访客', 'Online store visitors') or 0),
-                        'bounceRate': float(_get_landing_field(row, '跳出率', 'Bounce rate') or 0),
-                        'pageviewsPerSession': float(_get_landing_field(row, '每次访问的页面浏览量', 'Pageviews per session') or 0),
-                        'avgSessionDuration': float(_get_landing_field(row, '平均访问持续时间', 'Average session duration') or 0),
-                        'addToCart': int(_get_landing_field(row, '有商品添加到购物车的访问', 'Sessions with cart additions') or 0),
-                        'checkout': int(_get_landing_field(row, '到达结账页面的访问', 'Sessions that reached checkout') or 0),
-                        'purchase': int(_get_landing_field(row, '完成结账的访问', 'Sessions that completed checkout') or 0)
-                    }
+                if page_path in target_paths:
+                    result.update(available=True, reason='', path=page_path)
+                    fields = [
+                        ('sessions', '访问', 'Sessions', int),
+                        ('visitors', '在线商店访客', 'Online store visitors', int),
+                        ('bounceRate', '跳出率', 'Bounce rate', float),
+                        ('pageviewsPerSession', '每次访问的页面浏览量', 'Pageviews per session', float),
+                        ('avgSessionDuration', '平均访问持续时间', 'Average session duration', float),
+                        ('addToCart', '有商品添加到购物车的访问', 'Sessions with cart additions', int),
+                        ('checkout', '到达结账页面的访问', 'Sessions that reached checkout', int),
+                        ('purchase', '完成结账的访问', 'Sessions that completed checkout', int)]
+                    for key, cn, en, cast in fields:
+                        value = _get_landing_field(row, cn, en)
+                        try:
+                            result[key] = cast(value) if value not in ('', None) else None
+                            if result[key] is None:
+                                result['missingFields'][key] = f'原表缺少“{cn}”字段或数值'
+                        except (ValueError, TypeError):
+                            result[key] = None
+                            result['missingFields'][key] = f'原表“{cn}”数值格式异常'
                     break
     except Exception as e:
         print(f"读取着陆页数据失败：{e}")
+        result.update(available=False, reason='着陆页访问表读取失败')
     return result
 
 def parse_cart_adds(week_path):
@@ -690,10 +737,8 @@ def parse_pageviews_global(week_folder, page_config=None):
     path_to_cat = {}
     if page_config:
         for cat, cfg in page_config.items():
-            landing_page = cfg.get('landing_page', f'/collections/{cat}')
-            path_to_cat[landing_page] = cat
-            if cat == 'linkdolls.com':
-                path_to_cat['/'] = cat
+            for landing_page in page_paths(cat):
+                path_to_cat[landing_page] = cat
     try:
         with open(target_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -705,7 +750,7 @@ def parse_pageviews_global(week_folder, page_config=None):
                     path = parts[0].strip()
                     if path in path_to_cat:
                         cat = path_to_cat[path]
-                        result[cat] = {'pageviews': int(parts[1] or 0), 'activeUsers': int(parts[2] or 0)}
+                        result[cat] = {'pageviews': int(parts[1] or 0), 'activeUsers': int(parts[2] or 0), 'available': True}
     except Exception as e:
         print(f"读取页面浏览数失败: {e}")
     return result
@@ -733,8 +778,8 @@ def aggregate_week(category, week_folder):
         'date': date_str,
         'hasData': False,
         'gsc': {'clicks': 0, 'impressions': 0, 'ctr': 0, 'rank': 0, 'url': ''},
-        'ga4': {'pageviews': 0, 'activeUsers': 0},
-        'landingPage': {'sessions': 0, 'visitors': 0, 'bounceRate': 0, 'pageviewsPerSession': 0, 'avgSessionDuration': 0},
+        'ga4': {'pageviews': 0, 'activeUsers': 0, 'available': False, 'reason': '该周页面浏览表缺失或未匹配到当前页面'},
+        'landingPage': {'available': False, 'reason': '缺少该周着陆页访问表', 'missingFields': {}},
         'queries': [],
         'devices': [],
         'countries': [],
@@ -746,11 +791,14 @@ def aggregate_week(category, week_folder):
     }
     if not week_path.exists():
         return result
-    webpage = parse_webpage(week_path / '网页.csv')
+    webpage = parse_webpage(week_path / '网页.csv', category)
     result['gsc'] = webpage
-    result['ga4'] = {'pageviews': 0, 'activeUsers': 0}
     result['queries'] = parse_queries(week_path / '查询数.csv')
     result['devices'] = parse_devices(week_path / '设备.csv')
+    result['gscScope'] = gsc_scope_status(week_path, category)
+    result['deviceStatus'] = dict(result['gscScope'])
+    if not result['devices']:
+        result['deviceStatus'] = {'available': False, 'reason': '缺少设备.csv 或无有效设备记录'}
     result['countries'] = parse_devices(week_path / '国家_地区.csv')
     click_file = week_path / '页面点击数.csv'
     result['clickDataAvailable'] = click_file.exists()
