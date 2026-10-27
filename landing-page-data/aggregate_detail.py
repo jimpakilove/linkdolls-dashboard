@@ -926,7 +926,8 @@ def main():
     
     output_path = BASE_PATH / 'dashboard_detail.json'
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
+        # Keep the growing dashboard payload compact without changing its data.
+        json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
     
     # ===== 新增：按产品首字母 + 按周汇总收入 =====
     week_mapping = build_week_mapping(weeks)
