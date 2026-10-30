@@ -28,6 +28,7 @@ echo "============================================================"
 echo ""
 echo "📦 步骤 1/3  更新 PDP 看板数据..."
 cd "$DATA_DIR"
+python3 -B -m unittest test_product_names.py
 python3 update_pdp.py
 
 # ── 步骤 2：分类页看板 ─────────────────────────────────────────
@@ -63,6 +64,7 @@ git add landing-page-data/dashboard.html \
         landing-page-data/test_traffic_data.py \
         landing-page-data/test_traffic_render.cjs \
         landing-page-data/test_category_revenue.py \
+        landing-page-data/test_product_names.py \
         landing-page-data/test_revenue_aggregation.py \
         update_and_push.sh
 

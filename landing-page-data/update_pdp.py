@@ -168,13 +168,32 @@ def calc_trend(wv):
     return 'declining'
 
 
+def select_product_name(observations, fallback):
+    """Use the latest nonblank exported name, not the longest historical name.
+
+    Each observation is (ISO week start, name, views). If the latest week has
+    multiple names for the same code, prefer the name with most combined views;
+    use the name itself to break ties reproducibly, independent of CSV row order.
+    """
+    valid = [(day, name.strip(), views) for day, name, views in observations
+             if name and name.strip()]
+    if not valid:
+        return fallback
+    latest = max(day for day, _, _ in valid)
+    name_views = defaultdict(int)
+    for day, name, views in valid:
+        if day == latest:
+            name_views[name] += views
+    return max(name_views, key=lambda name: (name_views[name], name))
+
+
 def step1_read_ecommerce():
     """步骤1: 读取电子商务购买数据（按产品代码聚合变体）"""
     print("📦 读取电子商务购买数据...")
     n_weeks = len(WEEKS)
     raw_products = {}
 
-    for wi, (wname, suffix, _) in enumerate(WEEKS):
+    for wi, (wname, suffix, week_start) in enumerate(WEEKS):
         fname = os.path.join(PAGEVIEWS_DIR, f'电子商务购买_商品名称{suffix}.csv')
         if not os.path.exists(fname):
             print(f"  ⚠ 缺少 {wname} 数据: {fname}")
@@ -192,7 +211,7 @@ def step1_read_ecommerce():
 
             if code not in raw_products:
                 raw_products[code] = {
-                    'names': [],  # 收集所有变体名称
+                    'names': [],  # 收集名称及来源周，避免旧长名称覆盖新名称
                     'code': code,
                     'category': cat,
                     'firstChar': first,
@@ -204,9 +223,8 @@ def step1_read_ecommerce():
                 }
 
             p = raw_products[code]
-            p['names'].append(name)
-
             views = int(row.get('查看过的商品数', 0))
+            p['names'].append((week_start, name, views))
             p['weeklyViews'][wi] += views
             p['weeklyUsers'][wi] += int(row.get('活跃用户', 0))
             p['weeklyCarts'][wi] += int(row.get('加入购物车的商品数', 0))
@@ -229,9 +247,8 @@ def step1_read_ecommerce():
             else:
                 p['weeklyBounce'][wi] = 0.0
 
-        # 选择最佳名称：保留最长名称（通常最完整）
-        all_names = list(set(p['names']))
-        best_name = max(all_names, key=len) if all_names else code
+        # 优先最新有效周；同周多个名称按合计浏览量确定代表名称。
+        best_name = select_product_name(p['names'], code)
 
         # 清理临时字段
         del p['names']
