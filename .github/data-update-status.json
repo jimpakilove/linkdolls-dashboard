@@ -1,10 +1,10 @@
 {
   "data_through": "2026-11-22",
   "week": "w47_2026-11-16",
-  "built_at": "2026-11-27T16:02:26+08:00",
+  "built_at": "2026-11-27T19:12:34+08:00",
   "source_sha256": "2cc09a915e6065fe0c90617bcb658ab9172838c6a435cf49c549b9fbd9ccee68",
   "source_files": 10283,
-  "commit": "8189e825693ede4c8fe223a5b3779a84d78e8e67",
+  "commit": "0bcdd25af76dbffc4c752c720d969be3d8d4d04d",
   "coverage": {
     "alien-sex-dolls": [
       "w11_2026-03-09",
