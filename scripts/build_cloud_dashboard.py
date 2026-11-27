@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 REPO = Path(__file__).resolve().parents[1]
 PAGES = ('dashboard.html', 'dashboard_collection.html', 'dashboard_click_rate.html', 'dashboard_top50.html')
 JSON_FILES = ('dashboard_detail.json', 'top50_data.json', 'category_data.json', 'category_revenue.json')
+ASSETS = ('cloud-update.js',)
 CODE = ('aggregate_detail.py', 'update_pdp.py', 'test_product_names.py', 'test_traffic_data.py',
         'test_category_revenue.py', 'test_revenue_aggregation.py', 'test_traffic_render.cjs')
 
@@ -165,7 +166,7 @@ def package_site(work, destination, metadata):
         raise ValueError('发布目录必须不存在，防止残留文件被发布')
     public = destination / 'landing-page-data'
     public.mkdir(parents=True)
-    for name in (*PAGES, *JSON_FILES):
+    for name in (*PAGES, *JSON_FILES, *ASSETS):
         shutil.copyfile(work / 'landing-page-data' / name, public / name)
     (destination / '.nojekyll').touch()
     (destination / 'index.html').write_text(
@@ -212,7 +213,7 @@ def build(source, destination, monday, policy):
             slug = row.get('着陆页', '').rstrip('/').split('/')[-1]
             if re.fullmatch(r'[a-z0-9][a-z0-9.-]*', slug) and slug not in ('.', '..'):
                 (base / slug).mkdir(exist_ok=True)
-        for name in (*CODE, *PAGES):
+        for name in (*CODE, *PAGES, *ASSETS):
             shutil.copyfile(REPO / 'landing-page-data' / name, base / name)
         for args in [
             ['-B', '-m', 'unittest', 'test_product_names.py', 'test_traffic_data.py'],

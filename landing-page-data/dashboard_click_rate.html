@@ -47,5 +47,6 @@ function render() { const metrics = allMetrics(); const period = PERIODS[selecte
 async function init() { try { const response = await fetch('dashboard_detail.json', {cache:'no-store'}); if (!response.ok) throw new Error(`读取数据失败 (${response.status})`); RAW = await response.json(); PERIODS = buildPeriods(RAW.stats?.weeks || []); if (!PERIODS.length) throw new Error('未找到足够的完整自然周数据'); selectedPeriodIndex = PERIODS.length - 1; $('periodSelect').innerHTML = PERIODS.map((p,i) => `<option value="${i}">${periodLabel(p.weeks)}</option>`).join(''); $('periodSelect').value = String(selectedPeriodIndex); $('periodSelect').addEventListener('change', event => { selectedPeriodIndex = Number(event.target.value); render(); }); $('sortButton').addEventListener('click', () => { sortDescending = !sortDescending; $('sortButton').textContent = sortDescending ? '按未达标数量排序' : '按分类页名称排序'; renderRows(allMetrics()); }); render(); } catch (error) { document.querySelector('.main').innerHTML += `<div class="error"><b>无法加载看板数据。</b> ${esc(error.message)}。请通过本项目的本地服务打开本页，而不是直接双击 HTML 文件。</div>`; console.error(error); } }
 init();
 </script>
+<script src="cloud-update.js"></script>
 </body>
 </html>

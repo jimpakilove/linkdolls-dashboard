@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch, Mock
 
-from build_cloud_dashboard import (last_complete_week, package_site, PAGES, JSON_FILES,
+from build_cloud_dashboard import (last_complete_week, package_site, PAGES, JSON_FILES, ASSETS,
                                    validate_output, validate_sources, prevent_history_loss)
 from drive_snapshot import Drive, allowed, FOLDER
 
@@ -109,14 +109,14 @@ class CloudSafetyTests(unittest.TestCase):
             root = Path(directory)
             base = root / 'work/landing-page-data'
             base.mkdir(parents=True)
-            for name in (*PAGES, *JSON_FILES):
+            for name in (*PAGES, *JSON_FILES, *ASSETS):
                 (base / name).write_text('<body></body>' if name.endswith('.html') else '{}')
             (base / 'customer.csv').write_text('private')
             (root / 'work/credentials.json').write_text('private')
             output = root / 'site'
             package_site(root / 'work', output, {'data_through':'2026-11-22', 'built_at':'2026-11-24'})
             names = {p.name for p in output.rglob('*') if p.is_file()}
-            self.assertEqual(names, set(PAGES + JSON_FILES) | {'index.html','.nojekyll','update-status.json'})
+            self.assertEqual(names, set(PAGES + JSON_FILES + ASSETS) | {'index.html','.nojekyll','update-status.json'})
             with self.assertRaises(ValueError):
                 package_site(root / 'work', output, {})
 

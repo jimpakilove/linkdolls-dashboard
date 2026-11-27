@@ -1,4 +1,5 @@
 name: Cloud dashboard update
+run-name: ${{ inputs.request_id && format('看板更新 · {0}', inputs.request_id) || format('看板更新 · {0}', github.run_number) }}
 
 on:
   schedule:
@@ -13,6 +14,10 @@ on:
         default: true
       week_start:
         description: '目标周周一 YYYY-MM-DD；留空为最近完整周'
+        type: string
+        required: false
+      request_id:
+        description: '看板按钮的请求编号；手动操作时留空'
         type: string
         required: false
 
@@ -68,7 +73,9 @@ jobs:
       - name: Install download dependencies
         run: python -m pip install -r scripts/requirements-cloud.txt
       - name: Test cloud safety checks
-        run: python -B -m unittest discover -s scripts -p 'test_cloud_dashboard.py'
+        run: |
+          python -B -m unittest discover -s scripts -p 'test_cloud_dashboard.py'
+          node --test scripts/test_cloud_update_api.mjs
       - name: Read a stable cloud snapshot
         env:
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
