@@ -12,6 +12,17 @@ from drive_snapshot import Drive, allowed
 
 
 class CloudSafetyTests(unittest.TestCase):
+    def test_unrelated_nonportable_names_do_not_break_inventory(self):
+        drive = Drive()
+        valid = {'id':'ok', 'name':'订单明细表导出2026-11-22.csv',
+                 'mimeType':'text/csv', 'md5Checksum':'abc'}
+        invalid = [{'id':'bad', 'name':name, 'mimeType':'text/csv'}
+                   for name in ['../escape.csv', 'old\\export.csv', '.']]
+        with patch.object(drive, 'get') as get:
+            get.return_value.json.return_value = {'files':invalid+[valid]}
+            self.assertEqual(list(drive.inventory('folder-id','orders/')),
+                             ['orders/订单明细表导出2026-11-22.csv'])
+
     def test_separate_folder_access_does_not_list_parent(self):
         drive = Drive()
         folders = {'config': 'config-id', 'orders': 'orders-id', 'landing-page-data': 'pages-id'}

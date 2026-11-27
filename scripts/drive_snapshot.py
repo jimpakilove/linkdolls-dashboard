@@ -86,7 +86,10 @@ class Drive:
                 for item in page.get('files', []):
                     name = item['name']
                     if '/' in name or '\\' in name or name in ('.', '..'):
-                        raise RuntimeError('云盘存在非法文件名，停止下载')
+                        # Drive permits names that cannot be local path components.
+                        # They cannot be allowlisted inputs. Ignore rather than let an
+                        # unrelated file stop the export; required inputs are checked later.
+                        continue
                     path = prefix + name
                     is_folder = item['mimeType'] == FOLDER
                     if not allowed(path, is_folder):
@@ -125,6 +128,7 @@ class Drive:
         destination = Path(destination)
         if destination.exists():
             raise RuntimeError('下载目录必须是新的空目录，避免混入旧数据')
+        print('正在读取云盘源文件清单…', flush=True)
         before = self.snapshot(root)
         if not before:
             raise RuntimeError('指定云盘文件夹没有可用数据；应包含 config、orders、landing-page-data')
@@ -134,6 +138,7 @@ class Drive:
             if (now - changed).total_seconds() < 300:
                 raise RuntimeError(f'文件刚上传，请至少等待 5 分钟后重试：{path}')
         destination.mkdir(parents=True)
+        print(f'清单包含 {len(before)} 个源文件，开始下载并校验…', flush=True)
         def download_one(pair):
             path, item = pair
             content = self.get('files/' + item['id'], alt='media', supportsAllDrives=True).content
@@ -145,7 +150,10 @@ class Drive:
             stamp = datetime.fromisoformat(item['modifiedTime'].replace('Z', '+00:00')).timestamp()
             os.utime(target, (stamp, stamp))  # PDP selects the most recently modified order export.
         with ThreadPoolExecutor(max_workers=8) as pool:
-            list(pool.map(download_one, before.items()))
+            for count, _ in enumerate(pool.map(download_one, before.items()), start=1):
+                if count % 1000 == 0:
+                    print(f'已下载并校验 {count}/{len(before)} 个文件', flush=True)
+        print('正在复核云盘清单是否发生变化…', flush=True)
         if self.snapshot(root) != before:
             raise RuntimeError('下载期间云盘内容发生变化，停止发布；请待上传结束后重试')
         # Private build evidence only; never included in the website artifact.
