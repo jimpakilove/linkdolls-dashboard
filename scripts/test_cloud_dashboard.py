@@ -12,6 +12,24 @@ from drive_snapshot import Drive, allowed
 
 
 class CloudSafetyTests(unittest.TestCase):
+    def test_separate_folder_access_does_not_list_parent(self):
+        drive = Drive()
+        folders = {'config': 'config-id', 'orders': 'orders-id', 'landing-page-data': 'pages-id'}
+        with patch.object(drive, 'inventory', return_value={}) as inventory:
+            drive.snapshot(folders)
+            self.assertEqual(inventory.call_args_list, [
+                unittest.mock.call('config-id', 'config/'),
+                unittest.mock.call('pages-id', 'landing-page-data/'),
+                unittest.mock.call('orders-id', 'orders/'),
+            ])
+
+    def test_invalid_folder_mapping_is_rejected_before_requests(self):
+        for folders in [{}, [], {'orders':'one'},
+                        {'config':'one','orders':'one','landing-page-data':'one'},
+                        {'config':'one','orders':'two','landing-page-data':'../three'}]:
+            with self.assertRaises(ValueError):
+                Drive().snapshot(folders)
+
     def test_schedule_week_boundary(self):
         self.assertEqual(last_complete_week(date(2026, 11, 24)), date(2026, 11, 16))
         self.assertEqual(last_complete_week(date(2026, 11, 23)), date(2026, 11, 16))

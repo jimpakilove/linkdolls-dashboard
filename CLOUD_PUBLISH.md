@@ -18,9 +18,9 @@
      landing-page-data/clicks/*.csv
    ```
 
-2. 在 Google Cloud 项目启用 Drive API，创建专用服务账号。只把以上数据文件夹以“查看者”权限共享给该账号，不需要全域委派或云盘管理员权限。
+2. 在 Google Cloud 项目启用 Drive API，创建专用服务账号。分别把 `config`、`orders`、`landing-page-data` 三个子目录以“查看者”权限共享给该账号。根目录含其他工作资料时不要共享整个根目录；不需要全域委派或云盘管理员权限。
 3. 配置账号登录。优先采用 Workload Identity Federation：身份提供者必须限制为本仓库及默认分支，允许通过该服务账号读取 Drive。将提供者资源名和账号邮箱分别填入仓库变量 `GCP_WORKLOAD_IDENTITY_PROVIDER`、`GCP_SERVICE_ACCOUNT`。如暂时不设置身份联合，可把专用账号 JSON 放入仓库 Secret `GDRIVE_SERVICE_ACCOUNT_JSON`；密钥不得提交代码、粘贴聊天或放进公开云盘目录。
-4. 在仓库 Actions variables 中设置 `DRIVE_FOLDER_ID` 为上述根文件夹 ID。设置 `CLOUD_PUBLISH_ENABLED=true` 后，工作流才会运行。
+4. 在仓库 Actions variables 中设置 `DRIVE_FOLDER_IDS` 为三个子目录的映射：`{"config":"配置目录ID","orders":"订单目录ID","landing-page-data":"报表数据目录ID"}`。程序直接读取这三个子目录，不需要访问父目录。仅在根目录本身只包含报表数据时，才使用兼容配置 `DRIVE_FOLDER_ID`。设置 `CLOUD_PUBLISH_ENABLED=true` 后，工作流才会运行。
 5. 工作流进入默认分支后，在 Actions → Cloud dashboard update → Run workflow，以默认 `dry_run=true` 先完成一次云端下载和验证。不要先切换现有网站的发布源。
 6. 试运行通过后，在 Settings → Pages 将 Source 改为 GitHub Actions。再次运行工作流，关闭 `dry_run`，完成正式发布。
 7. 验收原来的网站网址、五个菜单入口、观察周和收入/流量数据；确认 `.github/data-update-status.json` 成功写入。该小文件是每次成功发布的记录，不是原始数据或大型报表。

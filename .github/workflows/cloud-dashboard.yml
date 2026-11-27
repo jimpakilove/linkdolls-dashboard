@@ -43,11 +43,12 @@ jobs:
       - name: Check cloud configuration
         env:
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          DRIVE_FOLDER_IDS: ${{ vars.DRIVE_FOLDER_IDS }}
           WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
           DRIVE_CREDENTIALS: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
         run: |
-          test -n "$DRIVE_FOLDER_ID" || { echo 'Missing DRIVE_FOLDER_ID'; exit 1; }
+          test -n "$DRIVE_FOLDER_IDS$DRIVE_FOLDER_ID" || { echo 'Missing DRIVE_FOLDER_IDS'; exit 1; }
           if [ -n "$WIF_PROVIDER" ]; then
             test -n "$SERVICE_ACCOUNT" || { echo 'Missing GCP_SERVICE_ACCOUNT'; exit 1; }
           else
@@ -71,6 +72,7 @@ jobs:
       - name: Read a stable cloud snapshot
         env:
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          DRIVE_FOLDER_IDS: ${{ vars.DRIVE_FOLDER_IDS }}
         run: python scripts/drive_snapshot.py --destination "$RUNNER_TEMP/dashboard-inputs"
       - name: Validate, generate and package
         env:

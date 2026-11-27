@@ -66,7 +66,7 @@ class Drive:
             return response
         raise RuntimeError('Drive 暂时不可用，多次重试失败')
 
-    def inventory(self, root):
+    def inventory(self, root, prefix=''):
         if not re.fullmatch(r'[A-Za-z0-9_-]+', root):
             raise ValueError('DRIVE_FOLDER_ID 应为文件夹 ID，不是完整链接')
         records = {}
@@ -103,14 +103,29 @@ class Drive:
                 token = page.get('nextPageToken')
                 if not token:
                     return
-        walk(root)
+        walk(root, prefix)
+        return records
+
+    def snapshot(self, roots):
+        if isinstance(roots, str):
+            return self.inventory(roots)
+        if not isinstance(roots, dict) or set(roots) != {'config', 'orders', 'landing-page-data'}:
+            raise ValueError('DRIVE_FOLDER_IDS 必须包含 config、orders、landing-page-data 三个目录 ID')
+        if any(not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', value)
+               for value in roots.values()):
+            raise ValueError('云盘子目录 ID 格式不正确')
+        if len(set(roots.values())) != 3:
+            raise ValueError('三个云盘子目录必须分别指向不同目录')
+        records = {}
+        for name, folder_id in sorted(roots.items()):
+            records.update(self.inventory(folder_id, name + '/'))
         return records
 
     def download(self, root, destination):
         destination = Path(destination)
         if destination.exists():
             raise RuntimeError('下载目录必须是新的空目录，避免混入旧数据')
-        before = self.inventory(root)
+        before = self.snapshot(root)
         if not before:
             raise RuntimeError('指定云盘文件夹没有可用数据；应包含 config、orders、landing-page-data')
         now = datetime.now(timezone.utc)
@@ -131,7 +146,7 @@ class Drive:
             os.utime(target, (stamp, stamp))  # PDP selects the most recently modified order export.
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(download_one, before.items()))
-        if self.inventory(root) != before:
+        if self.snapshot(root) != before:
             raise RuntimeError('下载期间云盘内容发生变化，停止发布；请待上传结束后重试')
         # Private build evidence only; never included in the website artifact.
         (destination / 'source-manifest.json').write_text(
@@ -142,9 +157,11 @@ class Drive:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--folder-id', default=os.environ.get('DRIVE_FOLDER_ID', ''))
+    parser.add_argument('--folders-json', default=os.environ.get('DRIVE_FOLDER_IDS', ''))
     parser.add_argument('--destination', required=True)
     args = parser.parse_args()
     try:
-        Drive().download(args.folder_id, args.destination)
+        roots = json.loads(args.folders_json) if args.folders_json else args.folder_id
+        Drive().download(roots, args.destination)
     except (RuntimeError, ValueError) as error:
         parser.exit(1, str(error) + '\n')
