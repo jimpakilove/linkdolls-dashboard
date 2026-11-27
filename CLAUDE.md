@@ -23,7 +23,10 @@ python3 aggregate_detail.py
 
 The dashboard's "刷新数据" (Refresh Data) button calls `GET /api/refresh`, which triggers `aggregate_detail.py` via subprocess and reloads the page.
 
-There are no tests, no linting tools, and no build step.
+Regression checks live in `landing-page-data/test_*.py` and `test_traffic_render.cjs`.
+The cloud build entry point is `scripts/build_cloud_dashboard.py`; it validates a
+fresh CSV snapshot, runs the regression checks in an isolated temporary directory,
+and packages only public dashboard assets. See `CLOUD_PUBLISH.md` for activation.
 
 ## Architecture
 
@@ -105,6 +108,9 @@ Orders in `orders_detail_2026_Q1_with_tags.csv` are attributed to a category usi
 
 ## Important Caveats
 
-**Hardcoded absolute paths**: `aggregate_detail.py` contains Mac-specific absolute paths (e.g. `/Users/apple/Desktop/linkdolls dashboard/...`). If running on a different machine, update the path constants at the top of that file.
+**Portable paths**: `aggregate_detail.py` resolves configuration and orders relative
+to the project directory. Cloud builds must use fresh Drive inputs, never silently
+fall back to the raw CSVs tracked in Git. Only the explicitly allowlisted website
+files may be uploaded to Pages; do not publish the repository root.
 
 **Chinese-language data**: All CSV column headers, file names, and UI labels are in Simplified Chinese. Column name strings in the Python ETL code must exactly match the CSV headers.

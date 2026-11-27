@@ -1,1 +1,4 @@
 PROJECT_OVERVIEW.md
+__pycache__/
+gha-creds-*.json
+.cloud-build/

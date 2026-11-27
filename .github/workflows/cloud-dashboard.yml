@@ -1,0 +1,150 @@
+name: Cloud dashboard update
+
+on:
+  schedule:
+    # Asia/Shanghai: Monday 21:00 and Tuesday 12:00 (UTC+8, no DST).
+    - cron: '0 13 * * 1'
+    - cron: '0 4 * * 2'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '仅校验和生成，不更新线上网站'
+        type: boolean
+        default: true
+      week_start:
+        description: '目标周周一 YYYY-MM-DD；留空为最近完整周'
+        type: string
+        required: false
+
+# Serial publication; a later request cannot interrupt a deployment in progress.
+concurrency:
+  group: cloud-dashboard-pages
+  cancel-in-progress: false
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Fail safely before setup; pushing this workflow alone does not switch Pages.
+    if: vars.CLOUD_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check cloud configuration
+        env:
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          DRIVE_CREDENTIALS: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          test -n "$DRIVE_FOLDER_ID" || { echo 'Missing DRIVE_FOLDER_ID'; exit 1; }
+          if [ -n "$WIF_PROVIDER" ]; then
+            test -n "$SERVICE_ACCOUNT" || { echo 'Missing GCP_SERVICE_ACCOUNT'; exit 1; }
+          else
+            test -n "$DRIVE_CREDENTIALS" || { echo 'Missing Drive read-only credentials'; exit 1; }
+          fi
+      - name: Authenticate without a stored private key
+        if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Authenticate with a repository secret
+        if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER == ''
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+      - name: Install download dependencies
+        run: python -m pip install -r scripts/requirements-cloud.txt
+      - name: Test cloud safety checks
+        run: python -B -m unittest discover -s scripts -p 'test_cloud_dashboard.py'
+      - name: Read a stable cloud snapshot
+        env:
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+        run: python scripts/drive_snapshot.py --destination "$RUNNER_TEMP/dashboard-inputs"
+      - name: Validate, generate and package
+        env:
+          WEEK_START: ${{ inputs.week_start }}
+        run: |
+          args=()
+          if [ -n "$WEEK_START" ]; then args+=(--week-start "$WEEK_START"); fi
+          python scripts/build_cloud_dashboard.py \
+            --source "$RUNNER_TEMP/dashboard-inputs" \
+            --output "$RUNNER_TEMP/dashboard-site" "${args[@]}"
+      - name: Build summary
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'dashboard-site/landing-page-data/update-status.json'
+          d = json.loads(p.read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write(f"校验通过。数据截至 {d['data_through']}；{d['source_files']} 个源文件。\n\n")
+              f.write('是否已发布请以 deploy 作业结果为准；试运行不会修改网站。\n')
+          PY
+      - name: Upload only the public website
+        if: github.event_name == 'schedule' || inputs.dry_run == false
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/dashboard-site
+      - name: Record failed update
+        if: failure()
+        run: echo '云端更新失败，未进入部署。上一版网站保留；请查看失败步骤中的具体缺表或校验原因。' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save small publication receipt for the deploy job
+        if: success() && (github.event_name == 'schedule' || inputs.dry_run == false)
+        uses: actions/upload-artifact@v4
+        with:
+          name: publication-receipt
+          path: ${{ runner.temp }}/dashboard-site/landing-page-data/update-status.json
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name == 'schedule' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      # Only a small successful-publication receipt is committed, never source data.
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish validated website
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: publication-receipt
+          path: receipt
+      - name: Record successful publication and maintain repository activity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = '.github/data-update-status.json';
+            const {owner, repo} = context.repo;
+            let sha;
+            try {
+              const old = await github.rest.repos.getContent({owner, repo, path, ref: context.payload.repository.default_branch});
+              sha = old.data.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const data = JSON.parse(fs.readFileSync('receipt/update-status.json', 'utf8'));
+            await github.rest.repos.createOrUpdateFileContents({
+              owner, repo, path, sha, branch: context.payload.repository.default_branch,
+              message: `chore: record cloud update ${data.week} [skip ci]`,
+              content: Buffer.from(JSON.stringify(data, null, 2) + '\n').toString('base64')
+            });

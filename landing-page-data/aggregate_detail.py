@@ -84,7 +84,7 @@ def parse_csv(filepath):
 def load_page_config():
     """读取页面配置"""
     config = {}
-    config_path = Path('/Users/apple/Desktop/linkdolls dashboard/config/target-2026.csv')
+    config_path = BASE_PATH.parent / 'config' / 'target-2026.csv'
     
     if not config_path.exists():
         print(f"配置文件不存在: {config_path}")
@@ -125,7 +125,7 @@ def load_page_config():
 
 def load_orders_all():
     """读取全部订单快照，并合并重叠导出中的同一商品行。"""
-    orders_dir = Path('/Users/apple/Desktop/linkdolls dashboard/orders')
+    orders_dir = BASE_PATH.parent / 'orders'
     
     if not orders_dir.exists():
         print(f"订单目录不存在: {orders_dir}")
