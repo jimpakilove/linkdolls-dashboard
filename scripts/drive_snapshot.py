@@ -70,7 +70,9 @@ class Drive:
         if not re.fullmatch(r'[A-Za-z0-9_-]+', root):
             raise ValueError('DRIVE_FOLDER_ID 应为文件夹 ID，不是完整链接')
         records = {}
-        def walk(folder_id, prefix=''):
+        def scan(folder):
+            folder_id, prefix = folder
+            files, children = {}, []
             token = None
             names = set()
             while True:
@@ -98,15 +100,27 @@ class Drive:
                         raise RuntimeError(f'云盘存在重复名称：{path}')
                     names.add(name)
                     if is_folder:
-                        walk(item['id'], path + '/')
+                        children.append((item['id'], path + '/'))
                     else:
                         if not item.get('md5Checksum'):
                             raise RuntimeError(f'需上传原始 CSV 文件（不支持快捷方式或在线表格）：{path}')
-                        records[path] = {k: item[k] for k in FIELDS.split(',') if k in item}
+                        files[path] = {k: item[k] for k in FIELDS.split(',') if k in item}
                 token = page.get('nextPageToken')
                 if not token:
-                    return
-        walk(root, prefix)
+                    return files, children
+        pending = [(root, prefix)]
+        scanned = 0
+        # Each worker lists one folder, including all its pagination. Merge only
+        # on the caller thread so duplicate detection and manifests stay stable.
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            while pending:
+                next_level = []
+                for files, children in pool.map(scan, pending):
+                    records.update(files)
+                    next_level.extend(children)
+                    scanned += 1
+                pending = next_level
+                print(f'清单核对：已扫描 {scanned} 个目录，找到 {len(records)} 个源文件', flush=True)
         return records
 
     def snapshot(self, roots):

@@ -4,14 +4,41 @@ from datetime import date
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from build_cloud_dashboard import (last_complete_week, package_site, PAGES, JSON_FILES,
                                    validate_output, validate_sources, prevent_history_loss)
-from drive_snapshot import Drive, allowed
+from drive_snapshot import Drive, allowed, FOLDER
 
 
 class CloudSafetyTests(unittest.TestCase):
+    def test_parallel_inventory_preserves_pagination_and_legacy_weeks(self):
+        drive = Drive()
+        def folder(id, name):
+            return {'id':id, 'name':name, 'mimeType':FOLDER}
+        def csv(id):
+            return {'id':id, 'name':'页面点击数.csv', 'mimeType':'text/csv', 'md5Checksum':id}
+        pages = {
+            ('root', None): {'files':[folder('a','full-doll')], 'nextPageToken':'next'},
+            ('root', 'next'): {'files':[folder('b','anime-sex-doll')]},
+            ('a', None): {'files':[folder('aw','w47_2026-11-16')]},
+            ('b', None): {'files':[folder('bw','w12_2026-03-16 (1)')]},
+            ('aw', None): {'files':[csv('first')]},
+            ('bw', None): {'files':[csv('second')]},
+        }
+        def get(path, **params):
+            return Mock(json=lambda: pages[(params['q'].split("'")[1], params.get('pageToken'))])
+        with patch.object(drive, 'get', side_effect=get):
+            records = drive.inventory('root', 'landing-page-data/')
+        self.assertEqual(records, {
+            'landing-page-data/full-doll/w47_2026-11-16/页面点击数.csv':csv('first'),
+            'landing-page-data/anime-sex-doll/w12_2026-03-16 (1)/页面点击数.csv':csv('second'),
+        })
+        pages[('root', 'next')] = {'files':[folder('duplicate','full-doll')]}
+        with patch.object(drive, 'get', side_effect=get):
+            with self.assertRaisesRegex(RuntimeError, '重复名称'):
+                drive.inventory('root', 'landing-page-data/')
+
     def test_unrelated_nonportable_names_do_not_break_inventory(self):
         drive = Drive()
         valid = {'id':'ok', 'name':'订单明细表导出2026-11-22.csv',
